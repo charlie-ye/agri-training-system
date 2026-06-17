@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>河南农业大学实训管理系统</title>
+<link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
+<script src="https://unpkg.com/@element-plus/icons-vue/dist/index.iife.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7f0; }
+#app { min-height: 100vh; }
+.login-bg {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1b5e20 0%, #388e3c 30%, #66bb6a 70%, #a5d6a7 100%);
+}
+.login-card {
+  background: #fff; border-radius: 12px; padding: 40px 36px; width: 440px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.login-card h2 { text-align: center; margin-bottom: 30px; color: #2e7d32; font-size: 22px; }
+.login-card .el-button { width: 100%; margin-top: 10px; height: 42px; font-size: 16px; }
+
+.header {
+  background: linear-gradient(90deg, #1b5e20, #43a047); color: #fff;
+  padding: 0 24px; height: 60px; display: flex; align-items: center;
+  justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 20px; font-weight: 600; letter-spacing: 1px; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: 14px; }
+.header-right .el-button { color: #fff; border-color: rgba(255,255,255,0.5); }
+
+.sidebar {
+  width: 220px; min-height: calc(100vh - 60px); background: #1b3a1b;
+  transition: width 0.3s; overflow-y: auto;
+}
+.sidebar .el-menu { border-right: none; }
+.sidebar .el-menu-item { height: 50px; line-height: 50px; font-size: 14px; }
+.sidebar .el-menu-item.is-active { background: #2e5e2e !important; color: #a5d6a7 !important; }
+
+.main-wrap { display: flex; flex: 1; }
+.content { flex: 1; padding: 20px; overflow-y: auto; }
+
+.dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: #fff; border-radius: 8px; padding: 20px; text-align: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: transform 0.2s;
+}
+.stat-card:hover { transform: translateY(-3px); }
+.stat-card .num { font-size: 32px; font-weight: bold; color: #4caf50; }
+.stat-card .label { font-size: 13px; color: #909399; margin-top: 6px; }
+
+.panel { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.panel h3 { font-size: 16px; color: #303133; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #c8e6c9; }
+
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.el-table { font-size: 13px; }
+.el-table th { background: #e8f5e9 !important; color: #2e7d32 !important; }
+
+.el-dialog__body { max-height: 60vh; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 登录页 -->
+  <div class="login-bg" v-if="!token">
+    <div class="login-card">
+      <h2>🌾 河南农业大学实训管理系统</h2>
+      <el-form label-width="70px" size="large">
+        <el-form-item label="用户名">
+          <el-input v-model="loginForm.用户名" placeholder="请输入用户名" @keyup.enter="doLogin"></el-input>
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="loginForm.密码" type="password" placeholder="请输入密码" @keyup.enter="doLogin"></el-input>
+        </el-form-item>
+        <el-button type="success" @click="doLogin" :loading="loading">登 录</el-button>
+      </el-form>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <div class="demo-role admin" @click="loginForm={用户名:'admin',密码:'123'}"
+          style="flex:1;background:#fff5f5;border:2px solid #fde2e2;border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s;"
+          onmouseover="this.style.borderColor='#f56c6c';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(245,108,108,0.2)'"
+          onmouseout="this.style.borderColor='#fde2e2';this.style.transform='';this.style.boxShadow=''">
+          <div style="font-size:11px;color:#f56c6c;margin-bottom:4px;">🔑 管理员</div>
+          <div style="font-weight:600;font-size:13px;color:#303133;">admin</div>
+          <div style="font-size:11px;color:#c0c4cc;">密码 123</div>
+        </div>
+        <div class="demo-role teacher" @click="loginForm={用户名:'t001',密码:'123'}"
+          style="flex:1;background:#fdf6ec;border:2px solid #faecd8;border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s;"
+          onmouseover="this.style.borderColor='#e6a23c';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(230,162,60,0.2)'"
+          onmouseout="this.style.borderColor='#faecd8';this.style.transform='';this.style.boxShadow=''">
+          <div style="font-size:11px;color:#e6a23c;margin-bottom:4px;">📚 教师</div>
+          <div style="font-weight:600;font-size:13px;color:#303133;">t001</div>
+          <div style="font-size:11px;color:#c0c4cc;">密码 123</div>
+        </div>
+        <div class="demo-role student" @click="loginForm={用户名:'s001',密码:'123'}"
+          style="flex:1;background:#f0f9eb;border:2px solid #e1f3d8;border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s;"
+          onmouseover="this.style.borderColor='#67c23a';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(103,194,58,0.2)'"
+          onmouseout="this.style.borderColor='#e1f3d8';this.style.transform='';this.style.boxShadow=''">
+          <div style="font-size:11px;color:#67c23a;margin-bottom:4px;">🎓 学生</div>
+          <div style="font-weight:600;font-size:13px;color:#303133;">s001</div>
+          <div style="font-size:11px;color:#c0c4cc;">密码 123</div>
+        </div>
+      </div>
+      <p style="text-align:center;margin-top:12px;color:#c0c4cc;font-size:11px;">点击角色卡片快速填入账号</p>
+      <p style="text-align:center;margin-top:6px;font-size:12px;" id="backend-status">🔄 正在检测后端服务...</p>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div v-else style="display:flex;flex-direction:column;min-height:100vh;">
+    <div class="header">
+      <h1>🌾 河南农业大学实训管理系统</h1>
+      <div class="header-right">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span :style="{background:roleColor(me.角色名称),color:'#fff',padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600'}">{{ me.角色名称 }}</span>
+          <span style="font-weight:600;">{{ me.真实姓名 }}</span>
+        </span>
+        <el-button size="small" @click="switchAccount" style="color:#fff;border-color:rgba(255,255,255,0.7);background:transparent;">切换账号</el-button>
+        <el-button size="small" @click="doLogout" style="color:#fff;border-color:rgba(255,255,255,0.5);">退出系统</el-button>
+      </div>
+    </div>
+
+    <div class="main-wrap">
+      <div class="sidebar">
+        <el-menu :default-active="page" @select="onMenu" background-color="#1b3a1b" text-color="#a5d6a7" active-text-color="#66bb6a">
+          <el-menu-item index="仪表盘"><el-icon><location /></el-icon>仪表盘</el-menu-item>
+          <el-menu-item index="场地管理" v-if="me.角色名称!=='学生'"><el-icon><office-building /></el-icon>场地管理</el-menu-item>
+          <el-menu-item index="作物管理"><el-icon><sunny /></el-icon>作物管理</el-menu-item>
+          <el-menu-item index="项目管理" v-if="me.角色名称!=='学生'"><el-icon><trophy /></el-icon>项目管理</el-menu-item>
+          <el-menu-item index="器材管理" v-if="me.角色名称!=='学生'"><el-icon><box /></el-icon>器材管理</el-menu-item>
+          <el-menu-item index="考勤管理"><el-icon><calendar /></el-icon>考勤管理</el-menu-item>
+          <el-menu-item index="考勤发布" v-if="me.角色名称==='教师'"><el-icon><edit-pen /></el-icon>考勤发布</el-menu-item>
+          <el-menu-item index="学生签到" v-if="me.角色名称==='学生'"><el-icon><check /></el-icon>我的签到</el-menu-item>
+          <el-menu-item index="用户管理" v-if="me.角色名称==='管理员'"><el-icon><user /></el-icon>用户管理</el-menu-item>
+          <el-menu-item index="日志管理" v-if="me.角色名称==='管理员'"><el-icon><document /></el-icon>日志管理</el-menu-item>
+          <el-menu-item index="修改密码"><el-icon><lock /></el-icon>修改密码</el-menu-item>
+          <el-menu-item index="修改个人信息"><el-icon><edit /></el-icon>修改个人信息</el-menu-item>
+        </el-menu>
+      </div>
+
+      <div class="content">
+        <!-- 仪表盘 -->
+        <div v-if="page==='仪表盘'">
+          <div class="dashboard">
+            <div class="stat-card" v-for="s in dashStats" :key="s.label">
+              <div class="num">{{ s.value }}</div>
+              <div class="label">{{ s.label }}</div>
+            </div>
+          </div>
+          <!-- 图表行1：角色饼图 + 器材库存柱状图 -->
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>👥 用户角色分布</h3>
+              <div id="chart-role" style="width:100%;height:280px;"></div>
+            </div>
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>🔧 器材库存概览</h3>
+              <div id="chart-equip" style="width:100%;height:280px;"></div>
+            </div>
+          </div>
+          <!-- 图表行2：项目状态 + 考勤趋势 -->
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>📂 项目状态分布</h3>
+              <div id="chart-project" style="width:100%;height:280px;"></div>
+            </div>
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>📅 近7天考勤趋势</h3>
+              <div id="chart-attendance" style="width:100%;height:280px;"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>📋 最近操作日志</h3>
+            <el-table :data="recentLogs" size="small" border stripe>
+              <el-table-column prop="操作时间" label="时间" width="150"></el-table-column>
+              <el-table-column prop="用户姓名" label="操作人" width="90"></el-table-column>
+              <el-table-column prop="描述" label="操作内容"></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 场地管理 -->
+        <div v-if="page==='场地管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openVenueDlg()">+ 新增场地</el-button>
+              <el-select v-model="venueFilter" placeholder="使用状态" clearable style="width:140px" @change="loadVenues">
+                <el-option label="空闲" value="空闲"></el-option>
+                <el-option label="使用中" value="使用中"></el-option>
+                <el-option label="维护中" value="维护中"></el-option>
+              </el-select>
+              <el-button @click="loadVenues">🔄 刷新</el-button>
+            </div>
+            <el-table :data="venues" border stripe size="small">
+              <el-table-column prop="场地编号" label="编号" width="100"></el-table-column>
+              <el-table-column prop="场地名称" label="场地名称" width="140"></el-table-column>
+              <el-table-column prop="类型名称" label="类型" width="90"></el-table-column>
+              <el-table-column prop="面积平米" label="面积(m²)" width="90" align="right"></el-table-column>
+              <el-table-column prop="使用状态" label="状态" width="90">
+                <template #default="{row}"><el-tag :type="row.使用状态==='空闲'?'success':'warning'">{{row.使用状态}}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="责任人" label="责任人" width="90"></el-table-column>
+              <el-table-column prop="备注" label="备注"></el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openVenueDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delVenue(row.场地ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 作物管理 -->
+        <div v-if="page==='作物管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openCropDlg()">+ 新增品种</el-button>
+              <el-button @click="cropTab='品种';loadCrops">🌱 作物品种</el-button>
+              <el-button @click="cropTab='批次';loadBatches">📦 培育批次</el-button>
+              <el-button @click="loadCrops;loadBatches">🔄 刷新</el-button>
+            </div>
+            <el-tabs v-model="cropTab">
+              <el-tab-pane label="作物品种" name="品种">
+                <el-table :data="crops" border stripe size="small">
+                  <el-table-column prop="品种名称" label="品种名称" width="140"></el-table-column>
+                  <el-table-column prop="科属" label="科属" width="140"></el-table-column>
+                  <el-table-column prop="培育周期" label="周期(天)" width="90" align="right"></el-table-column>
+                  <el-table-column prop="温湿范围" label="温湿范围" width="120"></el-table-column>
+                  <el-table-column prop="描述" label="描述"></el-table-column>
+                  <el-table-column label="操作" width="160" fixed="right">
+                    <template #default="{row}">
+                      <el-button size="small" type="primary" @click="openCropDlg(row)">编辑</el-button>
+                      <el-button size="small" type="danger" @click="delCrop(row.品种ID)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-tab-pane>
+              <el-tab-pane label="培育批次" name="批次">
+                <div class="toolbar"><el-button type="success" @click="openBatchDlg()">+ 新增批次</el-button></div>
+                <el-table :data="batches" border stripe size="small">
+                  <el-table-column prop="批次ID" label="ID" width="60"></el-table-column>
+                  <el-table-column prop="批次名称" label="批次名称" width="130"></el-table-column>
+                  <el-table-column prop="品种名称" label="品种" width="110"></el-table-column>
+                  <el-table-column prop="场地名称" label="场地" width="100"></el-table-column>
+                  <el-table-column prop="种植日期" label="种植日期" width="110"></el-table-column>
+                  <el-table-column prop="数量" label="数量" width="70" align="right"></el-table-column>
+                  <el-table-column prop="生长状态" label="生长状态" width="90">
+                    <template #default="{row}"><el-tag size="small">{{row.生长状态}}</el-tag></template>
+                  </el-table-column>
+                  <el-table-column prop="存活率" label="存活率(%)" width="90" align="right"></el-table-column>
+                  <el-table-column label="操作" width="160" fixed="right">
+                    <template #default="{row}">
+                      <el-button size="small" type="primary" @click="openBatchDlg(row)">编辑</el-button>
+                      <el-button size="small" type="danger" @click="delBatch(row.批次ID)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-tab-pane>
+            </el-tabs>
+          </div>
+        </div>
+
+        <!-- 项目管理 -->
+        <div v-if="page==='项目管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openProjectDlg()">+ 新增项目</el-button>
+              <el-button @click="loadProjects">🔄 刷新</el-button>
+            </div>
+            <el-table :data="projects" border stripe size="small">
+              <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
+              <el-table-column prop="场地名称" label="场地" width="100"></el-table-column>
+              <el-table-column prop="人数上限" label="人数上限" width="90" align="right"></el-table-column>
+              <el-table-column prop="负责教师" label="负责教师" width="100"></el-table-column>
+              <el-table-column prop="开始日期" label="开始日期" width="110"></el-table-column>
+              <el-table-column prop="结束日期" label="结束日期" width="110"></el-table-column>
+              <el-table-column prop="项目状态" label="状态" width="90">
+                <template #default="{row}"><el-tag :type="row.项目状态==='招募中'?'success':row.项目状态==='进行中'?'warning':'info'">{{row.项目状态}}</el-tag></template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openProjectDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delProject(row.项目ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 器材管理 -->
+        <div v-if="page==='器材管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openEquipDlg()">+ 新增器材</el-button>
+              <el-button @click="loadEquipment">🔄 刷新</el-button>
+              <el-button type="warning" @click="loadLowStock" v-if="me.角色名称!=='学生'">⚠ 低库存预警</el-button>
+            </div>
+            <el-table :data="equipment" border stripe size="small">
+              <el-table-column prop="器材编号" label="器材编号" width="110"></el-table-column>
+              <el-table-column prop="器材名称" label="器材名称" width="140"></el-table-column>
+              <el-table-column prop="分类名称" label="分类" width="90"></el-table-column>
+              <el-table-column prop="规格型号" label="规格" width="120"></el-table-column>
+              <el-table-column prop="当前库存" label="库存" width="80" align="right"></el-table-column>
+              <el-table-column prop="最低库存" label="最低" width="80" align="right"></el-table-column>
+              <el-table-column prop="存放位置" label="存放位置" width="120"></el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openEquipDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delEquip(row.器材ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 考勤管理 -->
+        <div v-if="page==='考勤管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button @click="loadSessions">🔄 刷新</el-button>
+            </div>
+            <el-table :data="sessions" border stripe size="small">
+              <el-table-column prop="场次ID" label="ID" width="60"></el-table-column>
+              <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
+              <el-table-column prop="场次日期" label="日期" width="120"></el-table-column>
+              <el-table-column prop="开始时间" label="开始" width="80"></el-table-column>
+              <el-table-column prop="结束时间" label="结束" width="80"></el-table-column>
+              <el-table-column prop="地点" label="地点" width="120"></el-table-column>
+              <el-table-column prop="实到人数" label="实到" width="70" align="right"></el-table-column>
+              <el-table-column label="操作" width="180" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="viewAttendance(row)">查看签到</el-button>
+                  <el-button size="small" type="danger" @click="delSession(row.场次ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-if="attRecords.length>0" style="margin-top:20px;">
+              <h3 style="margin-bottom:12px;">📝 {{ attSessionName }} - 签到记录</h3>
+              <el-table :data="attRecords" border stripe size="small">
+                <el-table-column prop="签到ID" label="ID" width="60"></el-table-column>
+                <el-table-column prop="学生姓名" label="学生姓名" width="100"></el-table-column>
+                <el-table-column prop="签到时间" label="签到时间" width="160"></el-table-column>
+                <el-table-column prop="签到状态" label="状态" width="80">
+                  <template #default="{row}"><el-tag :type="row.签到状态==='出勤'?'success':'warning'">{{row.签到状态}}</el-tag></template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 考勤发布（教师） -->
+        <div v-if="page==='考勤发布'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openPublishDlg()">+ 发布考勤</el-button>
+              <el-button @click="loadSessions">🔄 刷新</el-button>
+            </div>
+            <el-table :data="sessions" border stripe size="small">
+              <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
+              <el-table-column prop="场次日期" label="日期" width="120"></el-table-column>
+              <el-table-column prop="开始时间" label="开始" width="80"></el-table-column>
+              <el-table-column prop="结束时间" label="结束" width="80"></el-table-column>
+              <el-table-column prop="地点" label="地点" width="120"></el-table-column>
+              <el-table-column prop="实到人数" label="实到" width="70"></el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openPublishDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delSession(row.场次ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 学生签到 -->
+        <div v-if="page==='学生签到'">
+          <div class="panel">
+            <h3>📝 扫码/输入签到</h3>
+            <el-form label-width="90px" size="large" style="max-width:400px;margin-top:20px;">
+              <el-form-item label="我的学号">
+                <el-input :value="me.学号工号" disabled></el-input>
+              </el-form-item>
+              <el-form-item label="场次ID">
+                <el-input v-model="checkinForm.场次ID" placeholder="请输入考勤场次ID" type="number"></el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="success" @click="doCheckin" :loading="checkinLoading" style="width:100%;height:42px;font-size:16px;">签 到</el-button>
+              </el-form-item>
+            </el-form>
+            <div v-if="myAttendance.length>0" style="margin-top:24px;">
+              <h3>📋 我的签到记录</h3>
+              <el-table :data="myAttendance" border stripe size="small" style="margin-top:12px;">
+                <el-table-column prop="场次ID" label="场次ID" width="80"></el-table-column>
+                <el-table-column prop="签到时间" label="签到时间" width="160"></el-table-column>
+                <el-table-column prop="签到状态" label="状态" width="80">
+                  <template #default="{row}"><el-tag :type="row.签到状态==='出勤'?'success':'warning'">{{row.签到状态}}</el-tag></template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 修改密码 -->
+        <div v-if="page==='修改密码'">
+          <div class="panel" style="max-width:480px;">
+            <h3>🔒 修改密码</h3>
+            <el-form label-width="100px" size="large" style="margin-top:20px;">
+              <el-form-item label="当前账号">
+                <el-input :value="me.用户名" disabled></el-input>
+              </el-form-item>
+              <el-form-item label="旧密码">
+                <el-input v-model="pwdForm.旧密码" type="password" placeholder="请输入旧密码"></el-input>
+              </el-form-item>
+              <el-form-item label="新密码">
+                <el-input v-model="pwdForm.新密码" type="password" placeholder="请输入新密码"></el-input>
+              </el-form-item>
+              <el-form-item label="确认新密码">
+                <el-input v-model="pwdForm.确认密码" type="password" placeholder="请再次输入新密码"></el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="success" @click="doChangePwd" style="width:100%;height:42px;font-size:16px;">确认修改密码</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </div>
+
+        <!-- 修改个人信息 -->
+        <div v-if="page==='修改个人信息'">
+          <div class="panel" style="max-width:480px;">
+            <h3>✏️ 修改个人信息</h3>
+            <el-form label-width="100px" size="large" style="margin-top:20px;">
+              <el-form-item label="登录账号">
+                <el-input :value="me.用户名" disabled>
+                  <template #append><el-tag size="small" type="info">不可修改</el-tag></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="学号/工号">
+                <el-input :value="me.学号工号" disabled>
+                  <template #append><el-tag size="small" type="info">不可修改</el-tag></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="真实姓名">
+                <el-input v-model="profileForm.真实姓名" placeholder="请输入新的姓名"></el-input>
+              </el-form-item>
+              <el-form-item label="当前角色">
+                <el-tag :type="me.角色名称==='管理员'?'danger':me.角色名称==='教师'?'warning':'info'" size="large">{{ me.角色名称 }}</el-tag>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="success" @click="doChangeProfile" style="width:100%;height:42px;font-size:16px;">保存修改</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <div v-if="page==='用户管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openUserDlg()">+ 新增用户</el-button>
+              <el-button @click="loadUsers(true)">显示禁用用户</el-button>
+              <el-button @click="loadUsers">仅显示启用</el-button>
+            </div>
+            <el-table :data="users" border stripe size="small">
+              <el-table-column prop="用户名" label="用户名" width="110"></el-table-column>
+              <el-table-column prop="真实姓名" label="姓名" width="90"></el-table-column>
+              <el-table-column prop="学号工号" label="学号/工号" width="120"></el-table-column>
+              <el-table-column prop="角色名称" label="角色" width="90">
+                <template #default="{row}"><el-tag :type="row.角色名称==='管理员'?'danger':row.角色名称==='教师'?'warning':'info'">{{row.角色名称}}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="手机号" label="手机号" width="130"></el-table-column>
+              <el-table-column prop="邮箱" label="邮箱"></el-table-column>
+              <el-table-column prop="是否启用" label="启用" width="70">
+                <template #default="{row}"><el-tag :type="row.是否启用?'success':'info'">{{row.是否启用?'是':'否'}}</el-tag></template>
+              </el-table-column>
+              <el-table-column label="操作" width="340" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openUserDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delUser(row.用户ID)" v-if="canDeleteUser(row)">删除</el-button>
+                  <el-button size="small" type="success" @click="restoreUser(row.用户ID)" v-if="row.是否启用==0 && me.角色名称==='管理员'">恢复</el-button>
+                  <el-button size="small" type="warning" @click="openResetPwdDlg(row)" v-if="canResetPassword(row)">重置密码</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 日志管理 -->
+        <div v-if="page==='日志管理'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-select v-model="logFilter" placeholder="筛选模块" clearable style="width:140px" @change="loadLogs">
+                <el-option label="全部" value="全部"></el-option>
+                <el-option v-for="m in ['场地','作物','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
+              </el-select>
+              <el-button type="success" @click="openLogDlg()">+ 新增日志</el-button>
+              <el-button type="danger" @click="delLogBatch">🗑 批量清空</el-button>
+              <el-button @click="loadLogs">🔄 刷新</el-button>
+            </div>
+            <el-table :data="logs" border stripe size="small">
+              <el-table-column prop="日志ID" label="ID" width="60"></el-table-column>
+              <el-table-column prop="用户姓名" label="操作人" width="90"></el-table-column>
+              <el-table-column prop="模块" label="模块" width="80"></el-table-column>
+              <el-table-column prop="操作类型" label="操作" width="80"></el-table-column>
+              <el-table-column prop="描述" label="内容"></el-table-column>
+              <el-table-column prop="操作时间" label="时间" width="150"></el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="danger" @click="delLog(row.日志ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 场地弹窗 -->
+  <el-dialog v-model="venueDlg.show" :title="venueDlg.isNew?'新增场地':'编辑场地'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="场地编号"><el-input v-model="venueDlg.form.场地编号" placeholder="如 VN-001"></el-input></el-form-item>
+      <el-form-item label="场地名称"><el-input v-model="venueDlg.form.场地名称"></el-input></el-form-item>
+      <el-form-item label="场地类型">
+        <el-select v-model="venueDlg.form.类型ID" style="width:100%" placeholder="选择类型">
+          <el-option v-for="t in venueTypes" :key="t.类型ID" :label="t.类型名称" :value="t.类型ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="面积(m²)"><el-input v-model="venueDlg.form.面积平米" type="number"></el-input></el-form-item>
+      <el-form-item label="主要用途"><el-input v-model="venueDlg.form.主要用途"></el-input></el-form-item>
+      <el-form-item label="使用状态">
+        <el-select v-model="venueDlg.form.使用状态" style="width:100%">
+          <el-option label="空闲" value="空闲"></el-option>
+          <el-option label="使用中" value="使用中"></el-option>
+          <el-option label="维护中" value="维护中"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="责任人"><el-input v-model="venueDlg.form.责任人"></el-input></el-form-item>
+      <el-form-item label="备注"><el-input v-model="venueDlg.form.备注" type="textarea"></el-input></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="venueDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveVenue">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 作物品种弹窗 -->
+  <el-dialog v-model="cropDlg.show" :title="cropDlg.isNew?'新增品种':'编辑品种'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="品种名称"><el-input v-model="cropDlg.form.品种名称"></el-input></el-form-item>
+      <el-form-item label="科属"><el-input v-model="cropDlg.form.科属" placeholder="如：禾本科小麦属"></el-input></el-form-item>
+      <el-form-item label="培育周期"><el-input v-model="cropDlg.form.培育周期" placeholder="天" type="number"></el-input></el-form-item>
+      <el-form-item label="温湿范围"><el-input v-model="cropDlg.form.温湿范围"></el-input></el-form-item>
+      <el-form-item label="描述"><el-input v-model="cropDlg.form.描述" type="textarea"></el-input></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="cropDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveCrop">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 批次弹窗 -->
+  <el-dialog v-model="batchDlg.show" :title="batchDlg.isNew?'新增批次':'编辑批次'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="批次名称"><el-input v-model="batchDlg.form.批次名称"></el-input></el-form-item>
+      <el-form-item label="作物品种">
+        <el-select v-model="batchDlg.form.品种ID" style="width:100%" placeholder="选择品种">
+          <el-option v-for="c in crops" :key="c.品种ID" :label="c.品种名称" :value="c.品种ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="场地">
+        <el-select v-model="batchDlg.form.场地ID" style="width:100%" placeholder="选择场地">
+          <el-option v-for="v in venues" :key="v.场地ID" :label="v.场地名称" :value="v.场地ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="种植日期"><el-date-picker v-model="batchDlg.form.种植日期" type="date" style="width:100%" value-format="YYYY-MM-DD"></el-date-picker></el-form-item>
+      <el-row :gutter="16">
+        <el-col :span="12"><el-form-item label="数量"><el-input v-model="batchDlg.form.数量" type="number"></el-input></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="存活率(%)"><el-input v-model="batchDlg.form.存活率" placeholder="如 95.5"></el-input></el-form-item></el-col>
+      </el-row>
+      <el-form-item label="生长状态">
+        <el-select v-model="batchDlg.form.生长状态" style="width:100%">
+          <el-option v-for="s in ['播种期','生长期','收获期','异常']" :key="s" :label="s" :value="s"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="batchDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveBatch">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 项目弹窗 -->
+  <el-dialog v-model="projectDlg.show" :title="projectDlg.isNew?'新增项目':'编辑项目'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="项目名称"><el-input v-model="projectDlg.form.项目名称"></el-input></el-form-item>
+      <el-form-item label="项目描述"><el-input v-model="projectDlg.form.项目描述" type="textarea" rows="2"></el-input></el-form-item>
+      <el-form-item label="场地">
+        <el-select v-model="projectDlg.form.场地ID" style="width:100%" placeholder="选择场地">
+          <el-option v-for="v in venues" :key="v.场地ID" :label="v.场地名称" :value="v.场地ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="负责教师">
+        <el-select v-model="projectDlg.form.负责教师ID" style="width:100%" placeholder="选择教师">
+          <el-option v-for="t in teachers" :key="t.用户ID" :label="t.真实姓名" :value="t.用户ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="人数上限"><el-input v-model="projectDlg.form.人数上限" type="number"></el-input></el-form-item>
+      <el-row :gutter="16">
+        <el-col :span="12"><el-form-item label="开始日期"><el-date-picker v-model="projectDlg.form.开始日期" type="date" style="width:100%" value-format="YYYY-MM-DD"></el-date-picker></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="结束日期"><el-date-picker v-model="projectDlg.form.结束日期" type="date" style="width:100%" value-format="YYYY-MM-DD"></el-date-picker></el-form-item></el-col>
+      </el-row>
+      <el-form-item label="项目状态">
+        <el-select v-model="projectDlg.form.项目状态" style="width:100%">
+          <el-option v-for="s in ['招募中','进行中','已结束']" :key="s" :label="s" :value="s"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="projectDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveProject">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 器材弹窗 -->
+  <el-dialog v-model="equipDlg.show" :title="equipDlg.isNew?'新增器材':'编辑器材'" width="680px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="器材编号"><el-input v-model="equipDlg.form.器材编号"></el-input></el-form-item>
+      <el-form-item label="器材名称"><el-input v-model="equipDlg.form.器材名称"></el-input></el-form-item>
+      <el-row :gutter="16">
+        <el-col :span="8"><el-form-item label="分类"><el-input v-model="equipDlg.form.分类ID" placeholder="分类ID"></el-input></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="规格"><el-input v-model="equipDlg.form.规格型号"></el-input></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="单位"><el-input v-model="equipDlg.form.单位"></el-input></el-form-item></el-col>
+      </el-row>
+      <el-row :gutter="16">
+        <el-col :span="8"><el-form-item label="库存"><el-input-number v-model="equipDlg.form.当前库存" :min="0" style="width:100%" :controls="true"></el-input-number></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="最低"><el-input-number v-model="equipDlg.form.最低库存" :min="0" style="width:100%" :controls="true"></el-input-number></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="单价"><el-input v-model="equipDlg.form.单价" placeholder="单价"></el-input></el-form-item></el-col>
+      </el-row>
+      <el-form-item label="存放位置"><el-input v-model="equipDlg.form.存放位置"></el-input></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="equipDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveEquip">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 考勤发布弹窗 -->
+  <el-dialog v-model="publishDlg.show" :title="publishDlg.isNew?'发布考勤':'编辑考勤'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="选择项目">
+        <el-select v-model="publishDlg.form.项目ID" style="width:100%">
+          <el-option v-for="p in myProjects" :key="p.项目ID" :label="p.项目名称" :value="p.项目ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="考勤日期"><el-date-picker v-model="publishDlg.form.场次日期" type="date" style="width:100%" value-format="YYYY-MM-DD"></el-date-picker></el-form-item>
+      <el-row :gutter="16">
+        <el-col :span="12"><el-form-item label="开始时间"><el-time-picker v-model="publishDlg.form.开始时间" format="HH:mm" value-format="HH:mm:ss" style="width:100%"></el-time-picker></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="结束时间"><el-time-picker v-model="publishDlg.form.结束时间" format="HH:mm" value-format="HH:mm:ss" style="width:100%"></el-time-picker></el-form-item></el-col>
+      </el-row>
+      <el-form-item label="地点"><el-input v-model="publishDlg.form.地点"></el-input></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="publishDlg.show=false">取消</el-button>
+      <el-button type="success" @click="savePublish">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 用户弹窗 -->
+  <el-dialog v-model="userDlg.show" :title="userDlg.isNew?'新增用户':'编辑用户'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="用户名"><el-input v-model="userDlg.form.用户名"></el-input></el-form-item>
+      <el-form-item label="真实姓名"><el-input v-model="userDlg.form.真实姓名"></el-input></el-form-item>
+      <el-form-item label="学号/工号"><el-input v-model="userDlg.form.学号工号"></el-input></el-form-item>
+      <el-form-item label="角色">
+        <el-select v-model="userDlg.form.角色ID" style="width:100%">
+          <el-option :value="1" label="管理员"></el-option>
+          <el-option :value="2" label="教师"></el-option>
+          <el-option :value="3" label="学生"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="密码"><el-input v-model="userDlg.form.密码" type="password" :placeholder="userDlg.isNew?'必填':'留空不修改'"></el-input></el-form-item>
+      <el-row :gutter="16">
+        <el-col :span="12"><el-form-item label="手机号"><el-input v-model="userDlg.form.手机号"></el-input></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="邮箱"><el-input v-model="userDlg.form.邮箱"></el-input></el-form-item></el-col>
+      </el-row>
+      <el-form-item label="启用" v-if="!userDlg.isNew">
+        <el-switch v-model="userDlg.form.是否启用" :active-value="1" :inactive-value="0"></el-switch>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="userDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveUser">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 新增日志弹窗 -->
+  <el-dialog v-model="logDlg.show" title="新增操作日志" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="操作模块">
+        <el-select v-model="logDlg.form.模块" style="width:100%" placeholder="选择模块">
+          <el-option v-for="m in ['场地','作物','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="操作类型">
+        <el-select v-model="logDlg.form.操作类型" style="width:100%" placeholder="选择操作类型">
+          <el-option v-for="t in ['新增','修改','删除','查询','导入','导出','审核','其他']" :key="t" :label="t" :value="t"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="目标类型">
+        <el-input v-model="logDlg.form.目标类型" placeholder="如：用户表、器材档案表（可选）"></el-input>
+      </el-form-item>
+      <el-form-item label="描述">
+        <el-input v-model="logDlg.form.描述" type="textarea" rows="4" placeholder="请描述本次操作内容"></el-input>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="logDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveLog">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 重置密码弹窗 -->
+  <el-dialog v-model="resetPwdDlg.show" title="重置密码" width="460px">
+    <el-form label-width="100px" size="large">
+      <el-form-item label="目标用户">
+        <el-input :value="resetPwdDlg.targetName" disabled></el-input>
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="resetPwdDlg.新密码" type="password" placeholder="请输入新密码" show-password></el-input>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="resetPwdDlg.show=false">取消</el-button>
+      <el-button type="warning" @click="doResetPwd">确认重置</el-button>
+    </template>
+  </el-dialog>
+
+</div>
+
+<script>
+const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+const { ElMessage, ElMessageBox, ElNotification } = ElementPlus;
+
+const app = createApp({
+  setup() {
+    // 关闭页面后 token 不持久化，每次打开必须重新登录
+    const token = ref('');
+    const me = ref({});
+    const loading = ref(false);
+    const loginForm = ref({用户名:'', 密码:''});
+    const page = ref('仪表盘');
+    // API base URL — 使用绝对路径支持 file:// 直接打开
+    const API_BASE = 'http://localhost:8000/api';
+    const api = axios.create({baseURL: API_BASE, timeout: 10000});
+
+    api.interceptors.request.use(config => {
+      if (token.value) config.headers.Authorization = 'Bearer ' + token.value;
+      return config;
+    });
+    api.interceptors.response.use(
+      res => res.data,
+      err => {
+        // 只有非取消类错误才弹提示（用户取消确认框不算错误）
+        const msg = err.response?.data?.detail;
+        if (msg && err.code !== 'ERR_CANCELED') {
+          ElMessage.error(msg);
+        }
+        return Promise.reject(err);
+      }
+    );
+
+    // 仪表盘
+    const dashStats = ref([]);
+    const recentLogs = ref([]);
+    function refreshDashboard() {
+      api.get('/dashboard/stats').then(r => {
+        dashStats.value = [
+          {label:'用户数', value:r['用户数']}, {label:'场地数', value:r['场地数']},
+          {label:'批次/作物', value:r['作物数']}, {label:'项目数', value:r['项目数']},
+          {label:'器材数', value:r['器材数']}, {label:'预约数', value:r['预约数']},
+          {label:'考勤场次', value:r['考勤场次']}, {label:'日志数', value:r['日志数']},
+        ];
+      });
+      api.get('/dashboard/logs').then(r => recentLogs.value = r);
+      api.get('/dashboard/charts').then(r => {
+        Vue.nextTick(() => renderCharts(r));
+      });
+    }
+
+    // ===== ECharts 图表渲染 =====
+    let chartInstances = {};
+    function renderCharts(data) {
+      // 销毁旧实例
+      Object.values(chartInstances).forEach(c => c.dispose());
+      chartInstances = {};
+
+      // 1. 角色分布饼图
+      const roleDom = document.getElementById('chart-role');
+      if (roleDom && data['角色分布']) {
+        const c = echarts.init(roleDom);
+        c.setOption({
+          tooltip: { trigger: 'item', formatter: '{b}: {c} 人 ({d}%)' },
+          legend: { bottom: 0 },
+          series: [{
+            type: 'pie', radius: ['45%', '70%'], center: ['50%', '45%'],
+            label: { formatter: '{b}\n{d}%' },
+            data: data['角色分布'].map(d => ({ name: d.角色名称, value: d.人数 })),
+            itemStyle: {
+              color: p => ['#f56c6c','#e6a23c','#67c23a'][p.dataIndex] || '#909399'
+            }
+          }]
+        });
+        chartInstances.role = c;
+      }
+
+      // 2. 器材库存柱状图
+      const equipDom = document.getElementById('chart-equip');
+      if (equipDom && data['器材库存']) {
+        const c = echarts.init(equipDom);
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: ['正常库存', '低库存预警'] },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [{
+            type: 'bar', barWidth: '50%',
+            data: [
+              { value: data['器材库存'].正常数, itemStyle: { color: '#67c23a' } },
+              { value: data['器材库存'].低库存数, itemStyle: { color: '#f56c6c' } }
+            ],
+            label: { show: true, position: 'top', fontSize: 16, fontWeight: 'bold' }
+          }]
+        });
+        chartInstances.equip = c;
+      }
+
+      // 3. 项目状态分布（横向柱状图）
+      const projDom = document.getElementById('chart-project');
+      if (projDom && data['项目状态']) {
+        const c = echarts.init(projDom);
+        const colors = { '招募中':'#409eff', '进行中':'#67c23a', '已结束':'#909399' };
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'value', minInterval: 1 },
+          yAxis: { type: 'category', data: data['项目状态'].map(d => d.状态) },
+          series: [{
+            type: 'bar', barWidth: '50%',
+            data: data['项目状态'].map(d => ({
+              value: d.数量,
+              itemStyle: { color: colors[d.状态] || '#e6a23c' }
+            })),
+            label: { show: true, position: 'right', fontSize: 15, fontWeight: 'bold' }
+          }]
+        });
+        chartInstances.proj = c;
+      }
+
+      // 4. 近7天考勤趋势折线图
+      const attDom = document.getElementById('chart-attendance');
+      if (attDom && data['考勤趋势']) {
+        const c = echarts.init(attDom);
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: {
+            type: 'category',
+            data: data['考勤趋势'].map(d => d.日期.slice(5)),
+            axisLabel: { rotate: 30 }
+          },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [{
+            type: 'line', smooth: true,
+            data: data['考勤趋势'].map(d => d.签到数),
+            areaStyle: { color: 'rgba(64,158,255,0.15)' },
+            lineStyle: { color: '#409eff', width: 3 },
+            itemStyle: { color: '#409eff' },
+            label: { show: true, fontSize: 12 }
+          }]
+        });
+        chartInstances.att = c;
+      }
+
+      // 窗口 resize 时重绘
+      window.addEventListener('resize', () => {
+        Object.values(chartInstances).forEach(c => c.resize());
+      }, { once: true });
+    }
+
+    // 登录
+    async function doLogin() {
+      if (!loginForm.value.用户名 || !loginForm.value.密码) { ElMessage.warning('请输入用户名和密码'); return; }
+      loading.value = true;
+      try {
+        const r = await api.post('/login', loginForm.value);
+        token.value = r.token;
+        me.value = r;
+        localStorage.setItem('token', r.token);
+        localStorage.setItem('me', JSON.stringify(r));
+        refreshDashboard();
+        ElMessage.success('登录成功！');
+      } catch(e) {}
+      loading.value = false;
+    }
+    function doLogout() {
+      api.post('/logout');
+      token.value = ''; me.value = {};
+      localStorage.clear(); page.value = '仪表盘';
+    }
+    function switchAccount() {
+      api.post('/logout');
+      token.value = ''; me.value = {};
+      localStorage.clear(); page.value = '仪表盘';
+      ElMessage.info('已退出，请重新登录');
+    }
+    function roleColor(roleName) {
+      const map = {'管理员':'#f56c6c', '教师':'#e6a23c', '学生':'#67c23a'};
+      return map[roleName] || '#909399';
+    }
+
+    // ===== 修改密码 & 个人信息 =====
+    const pwdForm = ref({旧密码:'', 新密码:'', 确认密码:''});
+    const profileForm = ref({真实姓名:''});
+    async function doChangePwd() {
+      if (!pwdForm.value.旧密码) { ElMessage.warning('请输入旧密码'); return; }
+      if (!pwdForm.value.新密码) { ElMessage.warning('请输入新密码'); return; }
+      if (pwdForm.value.新密码 !== pwdForm.value.确认密码) { ElMessage.warning('两次输入的新密码不一致'); return; }
+      try {
+        await api.put('/me/password', {旧密码: pwdForm.value.旧密码, 新密码: pwdForm.value.新密码});
+        pwdForm.value = {旧密码:'', 新密码:'', 确认密码:''};
+        ElMessage.success('密码修改成功！');
+      } catch(e) {}
+    }
+    async function doChangeProfile() {
+      if (!profileForm.value.真实姓名.trim()) { ElMessage.warning('姓名不能为空'); return; }
+      try {
+        const r = await api.put('/me/profile', {真实姓名: profileForm.value.真实姓名.trim()});
+        me.value.真实姓名 = r.真实姓名;
+        localStorage.setItem('me', JSON.stringify(me.value));
+        ElMessage.success('姓名修改成功！');
+      } catch(e) {}
+    }
+
+    function onMenu(key) {
+      page.value = key;
+      if (key === '仪表盘') refreshDashboard();
+      if (key === '场地管理') { loadVenueTypes(); loadVenues(); }
+      if (key === '作物管理') { cropTab.value='品种'; loadCrops(); loadVenues(); }
+      if (key === '项目管理') { loadProjects(); loadVenues(); loadTeachers(); }
+      if (key === '器材管理') loadEquipment();
+      if (key === '考勤管理' || key === '考勤发布') { loadSessions(); if(me.value.角色名称==='教师') loadMyProjects(); }
+      if (key === '学生签到') loadMyAttendance();
+      if (key === '用户管理') loadUsers();
+      if (key === '日志管理') loadLogs();
+      if (key === '修改个人信息') profileForm.value.真实姓名 = me.value.真实姓名;
+    }
+
+    // ===== 场地 =====
+    const venues = ref([]);
+    const venueFilter = ref('');
+    const venueTypes = ref([]);
+    const venueDlg = ref({show:false, isNew:true, form:{}});
+    function loadVenues() { api.get('/venues', {params:{status:venueFilter.value||undefined}}).then(r => venues.value = r); }
+    function loadVenueTypes() { api.get('/venue_types').then(r => venueTypes.value = r); }
+    function openVenueDlg(row) {
+      venueDlg.value.isNew = !row;
+      venueDlg.value.form = row ? {...row} : {场地编号:'', 场地名称:'', 类型ID:null, 面积平米:'', 主要用途:'', 使用状态:'空闲', 责任人:'', 备注:''};
+      venueDlg.value.show = true;
+    }
+    async function saveVenue() {
+      try {
+        if (venueDlg.value.isNew) await api.post('/venues', venueDlg.value.form);
+        else await api.put(`/venues/${venueDlg.value.form.场地ID}`, venueDlg.value.form);
+        venueDlg.value.show = false; loadVenues(); refreshDashboard(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delVenue(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该场地？','警告',{type:'warning'});
+        await api.delete(`/venues/${id}`); loadVenues(); refreshDashboard(); ElMessage.success('删除成功！');
+      } catch(e) {}
+    }
+
+    // ===== 作物 =====
+    const crops = ref([]); const batches = ref([]); const cropTab = ref('品种');
+    const cropDlg = ref({show:false, isNew:true, form:{}});
+    const batchDlg = ref({show:false, isNew:true, form:{}});
+    function loadCrops() { api.get('/crops').then(r => crops.value = r); }
+    function loadBatches() { api.get('/batches').then(r => batches.value = r); }
+    function openCropDlg(row) {
+      cropDlg.value.isNew = !row;
+      cropDlg.value.form = row ? {...row} : {品种名称:'', 科属:'', 培育周期:'', 温湿范围:'', 描述:''};
+      cropDlg.value.show = true;
+    }
+    async function saveCrop() {
+      try {
+        if (cropDlg.value.isNew) await api.post('/crops', cropDlg.value.form);
+        else await api.put(`/crops/${cropDlg.value.form.品种ID}`, cropDlg.value.form);
+        cropDlg.value.show = false; loadCrops(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delCrop(id) {
+      try {
+        await ElMessageBox.confirm('确定删除？','警告',{type:'warning'});
+        await api.delete(`/crops/${id}`); loadCrops();
+      } catch(e) {}
+    }
+    function openBatchDlg(row) {
+      batchDlg.value.isNew = !row;
+      batchDlg.value.form = row ? {...row} : {批次名称:'', 品种ID:null, 场地ID:null, 种植日期:'', 数量:0, 生长状态:'播种期', 存活率:''};
+      batchDlg.value.show = true;
+    }
+    async function saveBatch() {
+      try {
+        const d = {...batchDlg.value.form};
+        d.数量 = Number(d.数量) || 0;
+        if (batchDlg.value.isNew) await api.post('/batches', d);
+        else await api.put(`/batches/${d.批次ID}`, d);
+        batchDlg.value.show = false; loadBatches(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delBatch(id) {
+      try {
+        await ElMessageBox.confirm('确定删除？','警告',{type:'warning'});
+        await api.delete(`/batches/${id}`); loadBatches();
+      } catch(e) {}
+    }
+
+    // ===== 项目 =====
+    const projects = ref([]); const teachers = ref([]);
+    const projectDlg = ref({show:false, isNew:true, form:{}});
+    function loadProjects() { api.get('/projects').then(r => projects.value = r); }
+    function loadTeachers() { api.get('/users').then(r => teachers.value = r.filter(u=>u.角色ID===2&&u.是否启用===1)); }
+    function openProjectDlg(row) {
+      projectDlg.value.isNew = !row;
+      projectDlg.value.form = row ? {...row} : {项目名称:'', 项目描述:'', 场地ID:null, 负责教师ID:null, 人数上限:30, 开始日期:'', 结束日期:'', 项目状态:'招募中'};
+      projectDlg.value.show = true;
+    }
+    async function saveProject() {
+      try {
+        const d = {...projectDlg.value.form};
+        d.人数上限 = Number(d.人数上限) || 30;
+        if (projectDlg.value.isNew) await api.post('/projects', d);
+        else await api.put(`/projects/${d.项目ID}`, d);
+        projectDlg.value.show = false; loadProjects(); refreshDashboard(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delProject(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该项目？将级联删除相关考勤和报名数据！','警告',{type:'warning'});
+        await api.delete(`/projects/${id}`); loadProjects(); refreshDashboard(); ElMessage.success('删除成功！');
+      } catch(e) {}
+    }
+
+    // ===== 器材 =====
+    const equipment = ref([]);
+    const equipDlg = ref({show:false, isNew:true, form:{当前库存:0, 最低库存:0}});
+    function loadEquipment() { api.get('/equipment').then(r => equipment.value = r); }
+    function openEquipDlg(row) {
+      equipDlg.value.isNew = !row;
+      equipDlg.value.form = row ? {
+        ...row,
+        当前库存: Number(row.当前库存) || 0,
+        最低库存: Number(row.最低库存) || 0,
+      } : {器材编号:'', 器材名称:'', 分类ID:'', 规格型号:'', 单位:'个', 当前库存:0, 最低库存:0, 单价:'', 存放位置:''};
+      equipDlg.value.show = true;
+    }
+    async function saveEquip() {
+      try {
+        const d = {...equipDlg.value.form};
+        d.当前库存 = Number(d.当前库存) || 0;
+        d.最低库存 = Number(d.最低库存) || 0;
+        if (equipDlg.value.isNew) await api.post('/equipment', d);
+        else await api.put(`/equipment/${d.器材ID}`, d);
+        equipDlg.value.show = false; loadEquipment(); refreshDashboard(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delEquip(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该器材？','警告',{type:'warning'});
+        await api.delete(`/equipment/${id}`); loadEquipment(); refreshDashboard(); ElMessage.success('删除成功！');
+      } catch(e) {}
+    }
+    function loadLowStock() { api.get('/views/low_stock').then(r => { equipment.value = r; ElMessage.info('共 '+r.length+' 件器材库存过低'); }); }
+
+    // ===== 考勤 =====
+    const sessions = ref([]); const attRecords = ref([]); const attSessionName = ref('');
+    const checkinForm = ref({场次ID:'', 学号工号:''});
+    const checkinLoading = ref(false); const myAttendance = ref([]);
+    function loadSessions() { api.get('/sessions').then(r => sessions.value = r); }
+    async function viewAttendance(row) {
+      attSessionName.value = row.项目名称 + ' ' + row.场次日期;
+      const r = await api.get('/attendance', {params:{session_id:row.场次ID}});
+      attRecords.value = r;
+    }
+    async function doCheckin() {
+      if (!checkinForm.value.场次ID) { ElMessage.warning('请输入场次ID'); return; }
+      checkinLoading.value = true;
+      try {
+        await api.post('/attendance/checkin', {
+          场次ID: Number(checkinForm.value.场次ID),
+          学号工号: me.value.学号工号
+        });
+        ElMessage.success('✅ 签到成功！');
+        loadMyAttendance(); loadSessions();
+      } catch(e) { /* interceptor 已报错 */ }
+      checkinLoading.value = false;
+    }
+    async function loadMyAttendance() {
+      try { myAttendance.value = await api.get('/my_attendance'); } catch(e) {}
+    }
+    async function delSession(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该考勤场次？','警告',{type:'warning'});
+        await api.delete(`/sessions/${id}`); loadSessions(); ElMessage.success('删除成功！');
+      } catch(e) {}
+    }
+
+    // ===== 考勤发布 =====
+    const myProjects = ref([]);
+    const publishDlg = ref({show:false, isNew:true, form:{}});
+    function loadMyProjects() { api.get('/projects').then(r => myProjects.value = r.filter(p=>p.负责教师ID===me.value.用户ID)); }
+    function openPublishDlg(row) {
+      publishDlg.value.isNew = !row;
+      publishDlg.value.form = row ? {...row} : {项目ID:null, 场次日期:'', 开始时间:'08:00:00', 结束时间:'11:30:00', 地点:'', 带队教师ID:me.value.用户ID};
+      publishDlg.value.show = true;
+    }
+    async function savePublish() {
+      try {
+        if (publishDlg.value.isNew) await api.post('/sessions', publishDlg.value.form);
+        else await api.put(`/sessions/${publishDlg.value.form.场次ID}`, publishDlg.value.form);
+        publishDlg.value.show = false; loadSessions(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+
+    // ===== 用户管理 =====
+    const users = ref([]);
+    const userDlg = ref({show:false, isNew:true, form:{}});
+    function loadUsers(all=false) { api.get('/users', {params:{all}}).then(r => users.value = r); }
+    function canDeleteUser(row) {
+      if (me.value.角色ID === 1) return row.用户ID !== me.value.用户ID;
+      if (me.value.角色ID === 2) return row.角色ID === 3;
+      return false;
+    }
+    function openUserDlg(row) {
+      userDlg.value.isNew = !row;
+      userDlg.value.form = row ? {...row, 密码:''} : {用户名:'', 真实姓名:'', 学号工号:'', 角色ID:3, 密码:'123456', 手机号:'', 邮箱:'', 是否启用:1};
+      userDlg.value.show = true;
+    }
+    async function saveUser() {
+      try {
+        const d = {...userDlg.value.form};
+        if (userDlg.value.isNew) await api.post('/users', d);
+        else await api.put(`/users/${d.用户ID}`, d);
+        userDlg.value.show = false; loadUsers(); refreshDashboard(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delUser(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该用户？（将设为禁用状态）','⚠ 警告',{type:'warning',confirmButtonText:'确认删除',cancelButtonText:'取消'});
+        await api.delete(`/users/${id}`); loadUsers(); refreshDashboard(); ElMessage.success('用户已禁用！');
+      } catch(e) {}
+    }
+    async function restoreUser(id) {
+      try { await api.put(`/users/${id}/restore`); loadUsers(); ElMessage.success('用户已恢复！'); } catch(e) {}
+    }
+    function canResetPassword(row) {
+      if (me.value.角色ID === 1) return row.用户ID !== me.value.用户ID;  // 管理员可重置所有人（除自己）
+      if (me.value.角色ID === 2) return row.角色ID === 3;                // 教师只能重置学生
+      return false;
+    }
+    const resetPwdDlg = ref({show:false, 目标用户ID:null, targetName:'', 新密码:''});
+    function openResetPwdDlg(row) {
+      resetPwdDlg.value = {show:true, 目标用户ID:row.用户ID, targetName:row.真实姓名+'（'+row.用户名+'）', 新密码:''};
+    }
+    async function doResetPwd() {
+      if (!resetPwdDlg.value.新密码) { ElMessage.warning('请输入新密码'); return; }
+      try {
+        await api.put(`/users/${resetPwdDlg.value.目标用户ID}/reset-password`, {新密码: resetPwdDlg.value.新密码});
+        resetPwdDlg.value.show = false;
+        ElMessage.success('密码已重置！');
+      } catch(e) {}
+    }
+
+    // ===== 日志 =====
+    const logs = ref([]); const logFilter = ref('');
+    const logDlg = ref({show:false, form:{}});
+    function loadLogs() { api.get('/logs', {params:{模块:logFilter.value||undefined}}).then(r => logs.value = r); }
+    function openLogDlg() {
+      logDlg.value.form = {模块:'系统', 操作类型:'其他', 目标类型:'', 描述:''};
+      logDlg.value.show = true;
+    }
+    async function saveLog() {
+      try {
+        await api.post('/logs', logDlg.value.form);
+        logDlg.value.show = false; loadLogs(); ElMessage.success('日志已添加！');
+      } catch(e) {}
+    }
+    async function delLog(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该日志？','警告',{type:'warning'});
+        await api.delete(`/logs/${id}`); loadLogs(); ElMessage.success('删除成功！');
+      } catch(e) {}
+    }
+    async function delLogBatch() {
+      try {
+        await ElMessageBox.confirm('确定清空所有日志？此操作不可恢复！','⚠ 严重警告',{type:'warning',confirmButtonText:'确认清空',cancelButtonText:'取消'});
+        await api.delete('/logs', {params:{模块:logFilter.value||undefined}});
+        loadLogs(); ElMessage.success('日志已清空！');
+      } catch(e) {}
+    }
+
+    // 初始化：关闭页面后不恢复登录态，每次打开必须重新登录
+
+    // 后端连通性检测（file:// 模式需要后端独立启动）
+    const backendOnline = ref(false);
+    const backendMsg = ref('正在检测后端服务...');
+    (async function checkBackend() {
+      try {
+        const r = await fetch(API_BASE + '/dashboard/stats', { method: 'GET', headers: token.value ? { Authorization: 'Bearer ' + token.value } : {} });
+        if (r.ok) { backendOnline.value = true; backendMsg.value = '✅ 后端已连接'; }
+      } catch(e) {
+        backendMsg.value = '❌ 后端未启动 — 请在 backend 目录执行 python main.py 启动后端';
+      }
+      const el = document.getElementById('backend-status');
+      if (el) { el.textContent = backendMsg.value; el.style.color = backendOnline.value ? '#67c23a' : '#e6a23c'; }
+    })();
+
+    return {
+      token,me,loading,loginForm,page,dashStats,recentLogs,
+      doLogin,doLogout,switchAccount,roleColor,onMenu,refreshDashboard,
+      venues,venueFilter,venueTypes,venueDlg,openVenueDlg,saveVenue,delVenue,loadVenues,loadVenueTypes,
+      crops,batches,cropTab,cropDlg,batchDlg,openCropDlg,saveCrop,delCrop,openBatchDlg,saveBatch,delBatch,loadCrops,loadBatches,
+      projects,teachers,projectDlg,openProjectDlg,saveProject,delProject,loadProjects,loadTeachers,
+      equipment,equipDlg,openEquipDlg,saveEquip,delEquip,loadEquipment,loadLowStock,
+      sessions,attRecords,attSessionName,checkinForm,checkinLoading,myAttendance,loadSessions,viewAttendance,doCheckin,loadMyAttendance,delSession,
+      myProjects,publishDlg,openPublishDlg,savePublish,loadMyProjects,
+      users,userDlg,openUserDlg,saveUser,delUser,loadUsers,canDeleteUser,restoreUser,
+      logs,logFilter,logDlg,loadLogs,delLog,delLogBatch,openLogDlg,saveLog,
+      pwdForm,doChangePwd,profileForm,doChangeProfile,
+      resetPwdDlg,canResetPassword,openResetPwdDlg,doResetPwd,
+    };
+  }
+});
+app.use(ElementPlus);
+// 注册所有 Element Plus Icons（CDN 暴露为 ElementPlusIconsVue 全局变量）
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
+app.mount('#app');
+</script>
+</body>
+</html>
