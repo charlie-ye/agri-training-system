@@ -46,3 +46,8 @@ python main.py
 - 前端: Vue3 + Element Plus + ECharts + Axios
 - 数据库: MySQL 8.0 + InnoDB + utf8mb4
 - 数据库名: **河南农业大学实训管理系统**
+
+
+
+
+这个项目从开始构思到数据库构建和前后端调试都是用workbuddy做的，包括推送到github上，差不多功能都能实现了，答辩的时候希望同学不要太卷搞的我又当小丑
