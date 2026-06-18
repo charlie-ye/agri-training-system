@@ -132,6 +132,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           <el-menu-item index="作物管理"><el-icon><sunny /></el-icon>作物管理</el-menu-item>
           <el-menu-item index="项目管理" v-if="me.角色名称!=='学生'"><el-icon><trophy /></el-icon>项目管理</el-menu-item>
           <el-menu-item index="器材管理" v-if="me.角色名称!=='学生'"><el-icon><box /></el-icon>器材管理</el-menu-item>
+          <el-menu-item index="器材借用"><el-icon><box /></el-icon>器材借用</el-menu-item>
           <el-menu-item index="考勤管理"><el-icon><calendar /></el-icon>考勤管理</el-menu-item>
           <el-menu-item index="考勤发布" v-if="me.角色名称==='教师'"><el-icon><edit-pen /></el-icon>考勤发布</el-menu-item>
           <el-menu-item index="学生签到" v-if="me.角色名称==='学生'"><el-icon><check /></el-icon>我的签到</el-menu-item>
@@ -146,9 +147,28 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
         <!-- 仪表盘 -->
         <div v-if="page==='仪表盘'">
           <div class="dashboard">
-            <div class="stat-card" v-for="s in dashStats" :key="s.label">
+            <div class="stat-card" v-for="s in dashStats" :key="s.label" style="cursor:pointer" @click="onMenu(s.page||'仪表盘')">
               <div class="num">{{ s.value }}</div>
               <div class="label">{{ s.label }}</div>
+            </div>
+          </div>
+          <!-- 今日操作摘要 -->
+          <div style="display:flex;gap:12px;margin-bottom:16px;" v-if="logSummary.最近日志">
+            <div class="stat-card" style="flex:1;min-width:100px;background:#f0f9eb;border-left:3px solid #67c23a;">
+              <div class="num" style="color:#67c23a;">{{ logSummary.今日新增 }}</div>
+              <div class="label">今日新增</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:100px;background:#fff5f5;border-left:3px solid #f56c6c;">
+              <div class="num" style="color:#f56c6c;">{{ logSummary.今日删除 }}</div>
+              <div class="label">今日删除</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:100px;background:#fdf6ec;border-left:3px solid #e6a23c;">
+              <div class="num" style="color:#e6a23c;">{{ logSummary.今日修改 }}</div>
+              <div class="label">今日修改</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:100px;background:#ecf5ff;border-left:3px solid #409eff;">
+              <div class="num" style="color:#409eff;">{{ dashStats.find(s=>s.label==='日志数')?.value || 0 }}</div>
+              <div class="label">总日志数</div>
             </div>
           </div>
           <!-- 图表行1：角色饼图 + 器材库存柱状图 -->
@@ -173,13 +193,49 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <div id="chart-attendance" style="width:100%;height:280px;"></div>
             </div>
           </div>
+          <!-- 图表行3：场地使用状态 + 30天借用趋势 -->
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>📍 场地使用状态</h3>
+              <div id="chart-venue" style="width:100%;height:280px;"></div>
+            </div>
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>📦 近30天借用趋势 <span style="font-size:12px;color:#c0c4cc;">（含借用+消耗）</span></h3>
+              <div id="chart-borrow" style="width:100%;height:280px;"></div>
+            </div>
+          </div>
+          <!-- 图表行4：批次生长分布 + 项目签到率 -->
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>🌱 批次生长状态分布</h3>
+              <div id="chart-batch" style="width:100%;height:280px;"></div>
+            </div>
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>✅ 项目出勤签到率</h3>
+              <div id="chart-enroll-rate" style="width:100%;height:280px;"></div>
+            </div>
+          </div>
           <div class="panel">
-            <h3>📋 最近操作日志</h3>
-            <el-table :data="recentLogs" size="small" border stripe>
+            <h3>📋 最近操作日志 <span style="font-size:12px;color:#c0c4cc;">（管理员可查看完整日志）</span></h3>
+            <el-table :data="logSummary.最近日志||recentLogs" size="small" border stripe>
               <el-table-column prop="操作时间" label="时间" width="150"></el-table-column>
               <el-table-column prop="用户姓名" label="操作人" width="90"></el-table-column>
+              <el-table-column prop="模块" label="模块" width="70">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.模块==='用户'?'danger':'success'">{{row.模块}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="操作类型" label="操作" width="70">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.操作类型==='新增'?'success':row.操作类型==='删除'?'danger':'warning'">{{row.操作类型}}</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column prop="描述" label="操作内容"></el-table-column>
             </el-table>
+            <div v-if="logSummary.活跃用户" style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:12px;color:#909399;">今日活跃：</span>
+              <el-tag v-for="(u,idx) in logSummary.活跃用户" :key="idx" size="small" type="info">{{ u.用户姓名 }} ({{ u.操作次数 }}次)</el-tag>
+            </div>
           </div>
         </div>
 
@@ -195,11 +251,11 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               </el-select>
               <el-button @click="loadVenues">🔄 刷新</el-button>
             </div>
-            <el-table :data="venues" border stripe size="small">
+            <el-table :data="venues" border stripe size="small" @sort-change="onSort">
               <el-table-column prop="场地编号" label="编号" width="100"></el-table-column>
               <el-table-column prop="场地名称" label="场地名称" width="140"></el-table-column>
               <el-table-column prop="类型名称" label="类型" width="90"></el-table-column>
-              <el-table-column prop="面积平米" label="面积(m²)" width="90" align="right"></el-table-column>
+              <el-table-column prop="面积平米" label="面积(m²)" width="90" align="right" sortable="custom"></el-table-column>
               <el-table-column prop="使用状态" label="状态" width="90">
                 <template #default="{row}"><el-tag :type="row.使用状态==='空闲'?'success':'warning'">{{row.使用状态}}</el-tag></template>
               </el-table-column>
@@ -220,9 +276,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           <div class="panel">
             <div class="toolbar">
               <el-button type="success" @click="openCropDlg()">+ 新增品种</el-button>
-              <el-button @click="cropTab='品种';loadCrops">🌱 作物品种</el-button>
-              <el-button @click="cropTab='批次';loadBatches">📦 培育批次</el-button>
-              <el-button @click="loadCrops;loadBatches">🔄 刷新</el-button>
+              <el-button @click="cropTab='品种';loadCrops()">🌱 作物品种</el-button>
+              <el-button @click="cropTab='批次';loadBatches()">📦 培育批次</el-button>
+              <el-button @click="loadCrops();loadBatches()">🔄 刷新</el-button>
             </div>
             <el-tabs v-model="cropTab">
               <el-tab-pane label="作物品种" name="品种">
@@ -272,10 +328,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-button type="success" @click="openProjectDlg()">+ 新增项目</el-button>
               <el-button @click="loadProjects">🔄 刷新</el-button>
             </div>
-            <el-table :data="projects" border stripe size="small">
+            <el-table :data="projects" border stripe size="small" @sort-change="onSort">
               <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
               <el-table-column prop="场地名称" label="场地" width="100"></el-table-column>
-              <el-table-column prop="人数上限" label="人数上限" width="90" align="right"></el-table-column>
+              <el-table-column prop="人数上限" label="人数上限" width="90" align="right" sortable="custom"></el-table-column>
               <el-table-column prop="负责教师" label="负责教师" width="100"></el-table-column>
               <el-table-column prop="开始日期" label="开始日期" width="110"></el-table-column>
               <el-table-column prop="结束日期" label="结束日期" width="110"></el-table-column>
@@ -300,12 +356,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-button @click="loadEquipment">🔄 刷新</el-button>
               <el-button type="warning" @click="loadLowStock" v-if="me.角色名称!=='学生'">⚠ 低库存预警</el-button>
             </div>
-            <el-table :data="equipment" border stripe size="small">
+            <el-table :data="equipment" border stripe size="small" @sort-change="onSort">
               <el-table-column prop="器材编号" label="器材编号" width="110"></el-table-column>
               <el-table-column prop="器材名称" label="器材名称" width="140"></el-table-column>
               <el-table-column prop="分类名称" label="分类" width="90"></el-table-column>
               <el-table-column prop="规格型号" label="规格" width="120"></el-table-column>
-              <el-table-column prop="当前库存" label="库存" width="80" align="right"></el-table-column>
+              <el-table-column prop="当前库存" label="库存" width="80" align="right" sortable="custom"></el-table-column>
               <el-table-column prop="最低库存" label="最低" width="80" align="right"></el-table-column>
               <el-table-column prop="存放位置" label="存放位置" width="120"></el-table-column>
               <el-table-column label="操作" width="160" fixed="right">
@@ -324,14 +380,14 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
             <div class="toolbar">
               <el-button @click="loadSessions">🔄 刷新</el-button>
             </div>
-            <el-table :data="sessions" border stripe size="small">
+            <el-table :data="sessions" border stripe size="small" @sort-change="onSort">
               <el-table-column prop="场次ID" label="ID" width="60"></el-table-column>
               <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
               <el-table-column prop="场次日期" label="日期" width="120"></el-table-column>
               <el-table-column prop="开始时间" label="开始" width="80"></el-table-column>
               <el-table-column prop="结束时间" label="结束" width="80"></el-table-column>
               <el-table-column prop="地点" label="地点" width="120"></el-table-column>
-              <el-table-column prop="实到人数" label="实到" width="70" align="right"></el-table-column>
+              <el-table-column prop="实到人数" label="实到" width="70" align="right" sortable="custom"></el-table-column>
               <el-table-column label="操作" width="180" fixed="right">
                 <template #default="{row}">
                   <el-button size="small" type="primary" @click="viewAttendance(row)">查看签到</el-button>
@@ -360,13 +416,13 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-button type="success" @click="openPublishDlg()">+ 发布考勤</el-button>
               <el-button @click="loadSessions">🔄 刷新</el-button>
             </div>
-            <el-table :data="sessions" border stripe size="small">
+            <el-table :data="sessions" border stripe size="small" @sort-change="onSort">
               <el-table-column prop="项目名称" label="项目名称" width="160"></el-table-column>
               <el-table-column prop="场次日期" label="日期" width="120"></el-table-column>
               <el-table-column prop="开始时间" label="开始" width="80"></el-table-column>
               <el-table-column prop="结束时间" label="结束" width="80"></el-table-column>
               <el-table-column prop="地点" label="地点" width="120"></el-table-column>
-              <el-table-column prop="实到人数" label="实到" width="70"></el-table-column>
+              <el-table-column prop="实到人数" label="实到" width="70" sortable="custom"></el-table-column>
               <el-table-column label="操作" width="160" fixed="right">
                 <template #default="{row}">
                   <el-button size="small" type="primary" @click="openPublishDlg(row)">编辑</el-button>
@@ -380,28 +436,64 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
         <!-- 学生签到 -->
         <div v-if="page==='学生签到'">
           <div class="panel">
-            <h3>📝 扫码/输入签到</h3>
-            <el-form label-width="90px" size="large" style="max-width:400px;margin-top:20px;">
-              <el-form-item label="我的学号">
-                <el-input :value="me.学号工号" disabled></el-input>
-              </el-form-item>
-              <el-form-item label="场次ID">
-                <el-input v-model="checkinForm.场次ID" placeholder="请输入考勤场次ID" type="number"></el-input>
-              </el-form-item>
-              <el-form-item>
-                <el-button type="success" @click="doCheckin" :loading="checkinLoading" style="width:100%;height:42px;font-size:16px;">签 到</el-button>
-              </el-form-item>
-            </el-form>
-            <div v-if="myAttendance.length>0" style="margin-top:24px;">
-              <h3>📋 我的签到记录</h3>
-              <el-table :data="myAttendance" border stripe size="small" style="margin-top:12px;">
-                <el-table-column prop="场次ID" label="场次ID" width="80"></el-table-column>
-                <el-table-column prop="签到时间" label="签到时间" width="160"></el-table-column>
-                <el-table-column prop="签到状态" label="状态" width="80">
-                  <template #default="{row}"><el-tag :type="row.签到状态==='出勤'?'success':'warning'">{{row.签到状态}}</el-tag></template>
-                </el-table-column>
-              </el-table>
+            <h3 style="display:flex;align-items:center;gap:8px;">📝 待签到考勤 <el-button size="small" @click="loadPendingSessions" style="margin-left:auto;">🔄 刷新</el-button></h3>
+            <div v-if="pendingSessions.length===0" style="text-align:center;padding:40px;color:#c0c4cc;">
+              <div style="font-size:48px;margin-bottom:12px;">✅</div>
+              <div>暂无待签到的考勤场次</div>
+              <div style="font-size:12px;margin-top:4px;">教师发布考勤后，你已报名的项目场次将显示在此</div>
             </div>
+            <el-table v-else :data="pendingSessions" border stripe size="small" style="margin-top:12px;">
+              <el-table-column prop="场次ID" label="场次ID" width="70"></el-table-column>
+              <el-table-column prop="项目名称" label="所属项目" width="150"></el-table-column>
+              <el-table-column prop="场次日期" label="日期" width="110"></el-table-column>
+              <el-table-column prop="开始时间" label="开始" width="80"></el-table-column>
+              <el-table-column prop="结束时间" label="结束" width="80"></el-table-column>
+              <el-table-column prop="地点" label="地点" width="120"></el-table-column>
+              <el-table-column prop="实到人数" label="已签到" width="80" align="right"></el-table-column>
+              <el-table-column label="操作" width="120" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="success" @click="quickCheckin(row.场次ID)" :loading="checkinLoading && checkinTarget===row.场次ID">签到</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div v-if="myAttendance.length>0" class="panel" style="margin-top:16px;">
+            <h3>📋 我的签到记录</h3>
+            <el-table :data="myAttendance" border stripe size="small" style="margin-top:12px;">
+              <el-table-column prop="场次ID" label="场次ID" width="80"></el-table-column>
+              <el-table-column prop="签到时间" label="签到时间" width="160"></el-table-column>
+              <el-table-column prop="签到状态" label="状态" width="80">
+                <template #default="{row}"><el-tag :type="row.签到状态==='出勤'?'success':'warning'">{{row.签到状态}}</el-tag></template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 器材借用 -->
+        <div v-if="page==='器材借用'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openBorrowDlg()">+ 申请借用</el-button>
+              <el-button @click="loadMyBorrows">🔄 刷新</el-button>
+            </div>
+            <el-table :data="myBorrows" border stripe size="small" @sort-change="onSort">
+              <el-table-column prop="借用ID" label="ID" width="60"></el-table-column>
+              <el-table-column prop="器材名称" label="器材名称" width="140"></el-table-column>
+              <el-table-column prop="借用数量" label="数量" width="70" align="right" sortable="custom"></el-table-column>
+              <el-table-column prop="借用日期" label="借用日期" width="140"></el-table-column>
+              <el-table-column prop="应还日期" label="应还日期" width="140"></el-table-column>
+              <el-table-column prop="借用状态" label="状态" width="90">
+                <template #default="{row}">
+                  <el-tag :type="row.借用状态==='借用中'?'success':row.借用状态==='待审批'?'warning':row.借用状态==='已归还'?'info':'danger'">{{row.借用状态}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="180" fixed="right" v-if="me.角色名称!=='学生'">
+                <template #default="{row}">
+                  <el-button v-if="row.借用状态==='待审批'" size="small" type="success" @click="approveBorrow(row.借用ID)">审批</el-button>
+                  <el-button v-if="row.借用状态==='借用中'" size="small" type="primary" @click="returnBorrow(row.借用ID)">归还</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
         </div>
 
@@ -491,6 +583,46 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 
         <!-- 日志管理 -->
         <div v-if="page==='日志管理'">
+          <!-- 今日操作统计 -->
+          <div style="display:flex;gap:12px;margin-bottom:16px;">
+            <div class="stat-card" style="flex:1;min-width:90px;background:#f0f9eb;border-left:3px solid #67c23a;">
+              <div class="num" style="color:#67c23a;font-size:28px;">{{ logSummary.今日操作总数||0 }}</div>
+              <div class="label">今日总操作</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#ecf5ff;border-left:3px solid #409eff;">
+              <div class="num" style="color:#409eff;font-size:28px;">{{ logSummary.今日新增||0 }}</div>
+              <div class="label">今日新增</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#fff5f5;border-left:3px solid #f56c6c;">
+              <div class="num" style="color:#f56c6c;font-size:28px;">{{ logSummary.今日删除||0 }}</div>
+              <div class="label">今日删除</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#fdf6ec;border-left:3px solid #e6a23c;">
+              <div class="num" style="color:#e6a23c;font-size:28px;">{{ logSummary.今日修改||0 }}</div>
+              <div class="label">今日修改</div>
+            </div>
+          </div>
+          <!-- 模块统计 + 活跃用户 -->
+          <div style="display:flex;gap:12px;margin-bottom:16px;" v-if="logSummary.模块统计">
+            <div class="panel" style="flex:1;">
+              <h3>📊 各模块操作分布</h3>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <el-tag v-for="m in logSummary.模块统计" :key="m.模块" size="large" :type="m.模块==='用户'?'danger':m.模块==='器材'?'warning':'info'">
+                  {{ m.模块 }}：{{ m.数量 }} 次
+                </el-tag>
+              </div>
+            </div>
+            <div class="panel" style="flex:1;" v-if="logSummary.活跃用户">
+              <h3>👤 今日活跃用户</h3>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div v-for="(u, idx) in logSummary.活跃用户" :key="idx" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:#f5f7fa;border-radius:4px;">
+                  <span><span style="color:#409eff;font-weight:600;">#{{ idx+1 }}</span> {{ u.用户姓名 }}</span>
+                  <el-tag size="small" type="success">{{ u.操作次数 }} 次操作</el-tag>
+                </div>
+                <div v-if="logSummary.活跃用户.length===0" style="color:#c0c4cc;text-align:center;padding:8px;">今日暂无操作记录</div>
+              </div>
+            </div>
+          </div>
           <div class="panel">
             <div class="toolbar">
               <el-select v-model="logFilter" placeholder="筛选模块" clearable style="width:140px" @change="loadLogs">
@@ -499,16 +631,24 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               </el-select>
               <el-button type="success" @click="openLogDlg()">+ 新增日志</el-button>
               <el-button type="danger" @click="delLogBatch">🗑 批量清空</el-button>
-              <el-button @click="loadLogs">🔄 刷新</el-button>
+              <el-button @click="loadLogs();loadLogSummary()">🔄 刷新</el-button>
             </div>
             <el-table :data="logs" border stripe size="small">
               <el-table-column prop="日志ID" label="ID" width="60"></el-table-column>
-              <el-table-column prop="用户姓名" label="操作人" width="90"></el-table-column>
-              <el-table-column prop="模块" label="模块" width="80"></el-table-column>
-              <el-table-column prop="操作类型" label="操作" width="80"></el-table-column>
-              <el-table-column prop="描述" label="内容"></el-table-column>
+              <el-table-column prop="用户姓名" label="操作人" width="90" fixed="left"></el-table-column>
+              <el-table-column prop="模块" label="模块" width="80">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.模块==='用户'?'danger':row.模块==='系统'?'info':'success'">{{row.模块}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="操作类型" label="操作" width="80">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.操作类型==='新增'?'success':row.操作类型==='删除'?'danger':row.操作类型==='修改'?'warning':'info'">{{row.操作类型}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="描述" label="操作详情" min-width="300"></el-table-column>
               <el-table-column prop="操作时间" label="时间" width="150"></el-table-column>
-              <el-table-column label="操作" width="80" fixed="right">
+              <el-table-column label="管理" width="80" fixed="right">
                 <template #default="{row}">
                   <el-button size="small" type="danger" @click="delLog(row.日志ID)">删除</el-button>
                 </template>
@@ -724,6 +864,27 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     </template>
   </el-dialog>
 
+  <!-- 器材借用弹窗 -->
+  <el-dialog v-model="borrowDlg.show" title="申请借用器材" width="500px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="选择器材">
+        <el-select v-model="borrowDlg.form.器材ID" style="width:100%" filterable placeholder="搜索器材">
+          <el-option v-for="e in equipment" :key="e.器材ID" :label="e.器材名称+'（库存：'+e.当前库存+'）'" :value="e.器材ID" :disabled="e.当前库存<=0"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="借用数量">
+        <el-input-number v-model="borrowDlg.form.借用数量" :min="1" :max="maxBorrowQty" style="width:100%"></el-input-number>
+      </el-form-item>
+      <el-form-item label="应还日期">
+        <el-date-picker v-model="borrowDlg.form.应还日期" type="date" style="width:100%" value-format="YYYY-MM-DD" :disabled-date="d=>new Date(d)<new Date()"></el-date-picker>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="borrowDlg.show=false">取消</el-button>
+      <el-button type="success" @click="saveBorrow">提交申请</el-button>
+    </template>
+  </el-dialog>
+
   <!-- 重置密码弹窗 -->
   <el-dialog v-model="resetPwdDlg.show" title="重置密码" width="460px">
     <el-form label-width="100px" size="large">
@@ -743,7 +904,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 </div>
 
 <script>
-const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+const { createApp, ref, computed, nextTick } = Vue;
 const { ElMessage, ElMessageBox, ElNotification } = ElementPlus;
 
 const app = createApp({
@@ -777,29 +938,35 @@ const app = createApp({
     // 仪表盘
     const dashStats = ref([]);
     const recentLogs = ref([]);
+    const logSummary = ref({});
     function refreshDashboard() {
       api.get('/dashboard/stats').then(r => {
         dashStats.value = [
-          {label:'用户数', value:r['用户数']}, {label:'场地数', value:r['场地数']},
-          {label:'批次/作物', value:r['作物数']}, {label:'项目数', value:r['项目数']},
-          {label:'器材数', value:r['器材数']}, {label:'预约数', value:r['预约数']},
-          {label:'考勤场次', value:r['考勤场次']}, {label:'日志数', value:r['日志数']},
+          {label:'用户数', value:r['用户数'], page:'用户管理'},
+          {label:'场地数', value:r['场地数'], page:'场地管理'},
+          {label:'批次/作物', value:r['作物数'], page:'作物管理'},
+          {label:'项目数', value:r['项目数'], page:'项目管理'},
+          {label:'器材数', value:r['器材数'], page:'器材管理'},
+          {label:'预约数', value:r['预约数']},
+          {label:'考勤场次', value:r['考勤场次'], page:'考勤管理'},
+          {label:'日志数', value:r['日志数'], page:'日志管理'},
         ];
       });
       api.get('/dashboard/logs').then(r => recentLogs.value = r);
       api.get('/dashboard/charts').then(r => {
-        Vue.nextTick(() => renderCharts(r));
+        nextTick(() => renderCharts(r));
       });
+      // 管理员加载日志摘要
+      if (me.value.角色名称 === '管理员') loadLogSummary();
     }
 
-    // ===== ECharts 图表渲染 =====
+    // ===== ECharts 图表渲染（可交互） =====
     let chartInstances = {};
     function renderCharts(data) {
-      // 销毁旧实例
       Object.values(chartInstances).forEach(c => c.dispose());
       chartInstances = {};
 
-      // 1. 角色分布饼图
+      // 1. 角色分布饼图 — 点击进入用户管理
       const roleDom = document.getElementById('chart-role');
       if (roleDom && data['角色分布']) {
         const c = echarts.init(roleDom);
@@ -815,10 +982,13 @@ const app = createApp({
             }
           }]
         });
+        c.on('click', function(params) {
+          if (me.value.角色名称 === '管理员') { page.value = '用户管理'; onMenu('用户管理'); }
+        });
         chartInstances.role = c;
       }
 
-      // 2. 器材库存柱状图
+      // 2. 器材库存柱状图 — 点击"低库存"跳转器材管理+预警
       const equipDom = document.getElementById('chart-equip');
       if (equipDom && data['器材库存']) {
         const c = echarts.init(equipDom);
@@ -835,10 +1005,18 @@ const app = createApp({
             label: { show: true, position: 'top', fontSize: 16, fontWeight: 'bold' }
           }]
         });
+        c.on('click', function(params) {
+          if (params.dataIndex === 1) {
+            page.value = '器材管理'; onMenu('器材管理');
+            setTimeout(() => loadLowStock(), 600);
+          } else {
+            page.value = '器材管理'; onMenu('器材管理');
+          }
+        });
         chartInstances.equip = c;
       }
 
-      // 3. 项目状态分布（横向柱状图）
+      // 3. 项目状态分布（横向柱状图） — 点击进入项目管理
       const projDom = document.getElementById('chart-project');
       if (projDom && data['项目状态']) {
         const c = echarts.init(projDom);
@@ -856,10 +1034,13 @@ const app = createApp({
             label: { show: true, position: 'right', fontSize: 15, fontWeight: 'bold' }
           }]
         });
+        c.on('click', function(params) {
+          page.value = '项目管理'; onMenu('项目管理');
+        });
         chartInstances.proj = c;
       }
 
-      // 4. 近7天考勤趋势折线图
+      // 4. 近7天考勤趋势折线图 — 点击进入考勤管理
       const attDom = document.getElementById('chart-attendance');
       if (attDom && data['考勤趋势']) {
         const c = echarts.init(attDom);
@@ -880,13 +1061,103 @@ const app = createApp({
             label: { show: true, fontSize: 12 }
           }]
         });
+        c.on('click', function(params) {
+          if (me.value.角色名称 === '学生') {
+            page.value = '学生签到'; onMenu('学生签到');
+          } else {
+            page.value = '考勤管理'; onMenu('考勤管理');
+          }
+        });
         chartInstances.att = c;
       }
 
-      // 窗口 resize 时重绘
-      window.addEventListener('resize', () => {
-        Object.values(chartInstances).forEach(c => c.resize());
-      }, { once: true });
+      // 5. 场地使用状态环形图 — 点击进入场地管理
+      const venueDom = document.getElementById('chart-venue');
+      if (venueDom && data['场地使用']) {
+        const c = echarts.init(venueDom);
+        const venueColors = {'空闲':'#67c23a','使用中':'#e6a23c','维护中':'#f56c6c'};
+        c.setOption({
+          tooltip: { trigger: 'item', formatter: '{b}: {c} 个 ({d}%)' },
+          legend: { bottom: 0 },
+          series: [{
+            type: 'pie', radius: ['50%','72%'], center: ['50%','45%'],
+            label: { formatter: '{b}\n{d}%' },
+            data: data['场地使用'].map(d => ({
+              name: d.状态, value: d.数量,
+              itemStyle: { color: venueColors[d.状态] || '#909399' }
+            }))
+          }]
+        });
+        c.on('click', () => { page.value = '场地管理'; onMenu('场地管理'); });
+        chartInstances.venue = c;
+      }
+
+      // 6. 近30天借用趋势折线图
+      const borrowDom = document.getElementById('chart-borrow');
+      if (borrowDom && data['借用趋势']) {
+        const c = echarts.init(borrowDom);
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: data['借用趋势'].map(d => d.日期), axisLabel: { rotate: 45, fontSize: 10, interval: 5 } },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [{
+            type: 'line', smooth: true, name: '借用/消耗数',
+            data: data['借用趋势'].map(d => d.数量),
+            areaStyle: { color: 'rgba(230,162,60,0.15)' },
+            lineStyle: { color: '#e6a23c', width: 2 },
+            itemStyle: { color: '#e6a23c' }
+          }]
+        });
+        c.on('click', () => { page.value = '器材管理'; onMenu('器材管理'); });
+        chartInstances.borrow = c;
+      }
+
+      // 7. 批次生长状态分布柱状图 — 点击进入作物管理
+      const batchDom = document.getElementById('chart-batch');
+      if (batchDom && data['批次分布']) {
+        const c = echarts.init(batchDom);
+        const growthColors = {'播种期':'#a5d6a7','生长期':'#66bb6a','收获期':'#43a047','异常':'#f56c6c'};
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: data['批次分布'].map(d => d.状态) },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [{
+            type: 'bar', barWidth: '45%',
+            data: data['批次分布'].map(d => ({ value: d.数量, itemStyle: { color: growthColors[d.状态] || '#409eff' } })),
+            label: { show: true, position: 'top', fontSize: 14, fontWeight: 'bold' }
+          }]
+        });
+        c.on('click', () => { page.value = '作物管理'; onMenu('作物管理'); });
+        chartInstances.batch = c;
+      }
+
+      // 8. 项目签到率横向条形图
+      const erDom = document.getElementById('chart-enroll-rate');
+      if (erDom && data['项目签到率']) {
+        const c = echarts.init(erDom);
+        c.setOption({
+          tooltip: { trigger: 'axis', formatter: function(p){ var d=p[0];return d.name+'<br/>签到率: '+d.value+'%<br/>实到: '+d.data.实到+' / 应到: '+d.data.应到; } },
+          xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+          yAxis: { type: 'category', data: data['项目签到率'].map(d => d.项目名称) },
+          series: [{
+            type: 'bar', barWidth: '55%',
+            data: data['项目签到率'].map(d => ({
+              value: d.签到率, 应到: d.应到, 实到: d.实到,
+              itemStyle: { color: d.签到率 >= 80 ? '#67c23a' : d.签到率 >= 50 ? '#e6a23c' : '#f56c6c' }
+            })),
+            label: { show: true, position: 'right', formatter: '{c}%', fontSize: 13, fontWeight: 'bold' }
+          }]
+        });
+        c.on('click', () => { page.value = '考勤管理'; onMenu('考勤管理'); });
+        chartInstances.enrollRate = c;
+      }
+
+      if (!window._chartResizeBound) {
+        window._chartResizeBound = true;
+        window.addEventListener('resize', () => {
+          Object.values(chartInstances).forEach(c => c.resize());
+        });
+      }
     }
 
     // 登录
@@ -897,8 +1168,6 @@ const app = createApp({
         const r = await api.post('/login', loginForm.value);
         token.value = r.token;
         me.value = r;
-        localStorage.setItem('token', r.token);
-        localStorage.setItem('me', JSON.stringify(r));
         refreshDashboard();
         ElMessage.success('登录成功！');
       } catch(e) {}
@@ -938,7 +1207,6 @@ const app = createApp({
       try {
         const r = await api.put('/me/profile', {真实姓名: profileForm.value.真实姓名.trim()});
         me.value.真实姓名 = r.真实姓名;
-        localStorage.setItem('me', JSON.stringify(me.value));
         ElMessage.success('姓名修改成功！');
       } catch(e) {}
     }
@@ -950,10 +1218,11 @@ const app = createApp({
       if (key === '作物管理') { cropTab.value='品种'; loadCrops(); loadVenues(); }
       if (key === '项目管理') { loadProjects(); loadVenues(); loadTeachers(); }
       if (key === '器材管理') loadEquipment();
+      if (key === '器材借用') { loadEquipment(); loadMyBorrows(); }
       if (key === '考勤管理' || key === '考勤发布') { loadSessions(); if(me.value.角色名称==='教师') loadMyProjects(); }
-      if (key === '学生签到') loadMyAttendance();
+      if (key === '学生签到') { loadPendingSessions(); loadMyAttendance(); }
       if (key === '用户管理') loadUsers();
-      if (key === '日志管理') loadLogs();
+      if (key === '日志管理') { loadLogs(); loadLogSummary(); }
       if (key === '修改个人信息') profileForm.value.真实姓名 = me.value.真实姓名;
     }
 
@@ -962,7 +1231,7 @@ const app = createApp({
     const venueFilter = ref('');
     const venueTypes = ref([]);
     const venueDlg = ref({show:false, isNew:true, form:{}});
-    function loadVenues() { api.get('/venues', {params:{status:venueFilter.value||undefined}}).then(r => venues.value = r); }
+    function loadVenues() { api.get('/venues', {params:{status:venueFilter.value||undefined}}).then(r => venues.value = r.sort((a,b) => (b.面积平米||0) - (a.面积平米||0))); }
     function loadVenueTypes() { api.get('/venue_types').then(r => venueTypes.value = r); }
     function openVenueDlg(row) {
       venueDlg.value.isNew = !row;
@@ -1031,7 +1300,7 @@ const app = createApp({
     // ===== 项目 =====
     const projects = ref([]); const teachers = ref([]);
     const projectDlg = ref({show:false, isNew:true, form:{}});
-    function loadProjects() { api.get('/projects').then(r => projects.value = r); }
+    function loadProjects() { api.get('/projects').then(r => projects.value = r.sort((a,b) => (b.人数上限||0) - (a.人数上限||0))); }
     function loadTeachers() { api.get('/users').then(r => teachers.value = r.filter(u=>u.角色ID===2&&u.是否启用===1)); }
     function openProjectDlg(row) {
       projectDlg.value.isNew = !row;
@@ -1057,7 +1326,7 @@ const app = createApp({
     // ===== 器材 =====
     const equipment = ref([]);
     const equipDlg = ref({show:false, isNew:true, form:{当前库存:0, 最低库存:0}});
-    function loadEquipment() { api.get('/equipment').then(r => equipment.value = r); }
+    function loadEquipment() { api.get('/equipment').then(r => equipment.value = r.sort((a,b) => (b.当前库存||0) - (a.当前库存||0))); }
     function openEquipDlg(row) {
       equipDlg.value.isNew = !row;
       equipDlg.value.form = row ? {
@@ -1085,35 +1354,91 @@ const app = createApp({
     }
     function loadLowStock() { api.get('/views/low_stock').then(r => { equipment.value = r; ElMessage.info('共 '+r.length+' 件器材库存过低'); }); }
 
+    // ===== 器材借用 =====
+    const myBorrows = ref([]);
+    const borrowDlg = ref({show:false, form:{器材ID:null, 借用数量:1, 应还日期:''}});
+    const maxBorrowQty = computed(() => {
+      if (!borrowDlg.value.form.器材ID) return 99;
+      const e = equipment.value.find(eq => eq.器材ID === borrowDlg.value.form.器材ID);
+      return e ? e.当前库存 : 99;
+    });
+    function loadMyBorrows() {
+      api.get('/borrows').then(r => {
+        let data = me.value.角色名称==='学生' ? r.filter(b => b.用户ID === me.value.用户ID) : r;
+        myBorrows.value = data.sort((a,b) => (b.借用ID||0) - (a.借用ID||0));
+      });
+    }
+    function openBorrowDlg() {
+      borrowDlg.value.form = {器材ID:null, 借用数量:1, 应还日期:''};
+      borrowDlg.value.show = true;
+    }
+    async function saveBorrow() {
+      if (!borrowDlg.value.form.器材ID) { ElMessage.warning('请选择器材'); return; }
+      try {
+        await api.post('/borrows', borrowDlg.value.form);
+        borrowDlg.value.show = false; loadMyBorrows(); loadEquipment(); ElMessage.success('借用申请已提交！');
+      } catch(e) {}
+    }
+    async function approveBorrow(id) {
+      try {
+        await ElMessageBox.confirm('确定审批通过该借用申请？通过后将扣减库存','审批确认',{type:'warning'});
+        await api.put(`/borrows/${id}/approve`);
+        loadMyBorrows(); loadEquipment(); ElMessage.success('审批通过！');
+      } catch(e) {}
+    }
+    async function returnBorrow(id) {
+      try {
+        await ElMessageBox.confirm('确定该器材已归还？','归还确认',{type:'warning'});
+        await api.put(`/borrows/${id}/return`);
+        loadMyBorrows(); loadEquipment(); ElMessage.success('器材已归还！');
+      } catch(e) {}
+    }
+
     // ===== 考勤 =====
     const sessions = ref([]); const attRecords = ref([]); const attSessionName = ref('');
-    const checkinForm = ref({场次ID:'', 学号工号:''});
-    const checkinLoading = ref(false); const myAttendance = ref([]);
-    function loadSessions() { api.get('/sessions').then(r => sessions.value = r); }
+    const pendingSessions = ref([]);
+    const checkinLoading = ref(false); const checkinTarget = ref(null); const myAttendance = ref([]);
+    function loadSessions() { api.get('/sessions').then(r => sessions.value = r.sort((a,b) => (b.场次ID||0) - (a.场次ID||0))); }
+    function loadPendingSessions() { api.get('/my_pending_sessions').then(r => pendingSessions.value = r); }
     async function viewAttendance(row) {
       attSessionName.value = row.项目名称 + ' ' + row.场次日期;
-      const r = await api.get('/attendance', {params:{session_id:row.场次ID}});
-      attRecords.value = r;
+      try { attRecords.value = await api.get('/attendance', {params:{session_id:row.场次ID}}); } catch(e) { attRecords.value = []; }
     }
-    async function doCheckin() {
-      if (!checkinForm.value.场次ID) { ElMessage.warning('请输入场次ID'); return; }
-      checkinLoading.value = true;
+    async function quickCheckin(sessionId) {
+      checkinTarget.value = sessionId; checkinLoading.value = true;
       try {
-        await api.post('/attendance/checkin', {
-          场次ID: Number(checkinForm.value.场次ID),
-          学号工号: me.value.学号工号
-        });
+        await api.post('/attendance/checkin', {场次ID: sessionId});
         ElMessage.success('✅ 签到成功！');
-        loadMyAttendance(); loadSessions();
-      } catch(e) { /* interceptor 已报错 */ }
-      checkinLoading.value = false;
+        loadPendingSessions(); loadMyAttendance(); loadSessions();
+      } catch(e) {}
+      checkinLoading.value = false; checkinTarget.value = null;
     }
     async function loadMyAttendance() {
       try { myAttendance.value = await api.get('/my_attendance'); } catch(e) {}
     }
+
+    // 通用表格排序 — 按数值从大到小
+    function onSort({ prop, order }) {
+      if (!order) return; // 取消排序，恢复原始顺序...简单起见不处理
+      const map = {
+        '场地管理': [venues, '面积平米'],
+        '项目管理': [projects, '人数上限'],
+        '器材管理': [equipment, '当前库存'],
+        '器材借用': [myBorrows, '借用数量'],
+        '考勤管理': [sessions, '实到人数'],
+        '考勤发布': [sessions, '实到人数'],
+      };
+      const [arr, col] = map[page.value] || [];
+      if (!arr) return;
+      arr.value = [...arr.value].sort((a, b) => {
+        const va = parseFloat(a[col]) || 0;
+        const vb = parseFloat(b[col]) || 0;
+        return order === 'descending' ? vb - va : va - vb;
+      });
+    }
     async function delSession(id) {
       try {
-        await ElMessageBox.confirm('确定删除该考勤场次？','警告',{type:'warning'});
+        await ElMessageBox.confirm('确定删除？','警告',{type:'warning'});
         await api.delete(`/sessions/${id}`); loadSessions(); ElMessage.success('删除成功！');
       } catch(e) {}
     }
@@ -1208,8 +1533,12 @@ const app = createApp({
       try {
         await ElMessageBox.confirm('确定清空所有日志？此操作不可恢复！','⚠ 严重警告',{type:'warning',confirmButtonText:'确认清空',cancelButtonText:'取消'});
         await api.delete('/logs', {params:{模块:logFilter.value||undefined}});
-        loadLogs(); ElMessage.success('日志已清空！');
+        loadLogs(); loadLogSummary(); ElMessage.success('日志已清空！');
       } catch(e) {}
+    }
+    // 日志摘要（管理员用）
+    async function loadLogSummary() {
+      try { logSummary.value = await api.get('/logs/summary'); } catch(e) {}
     }
 
     // 初始化：关闭页面后不恢复登录态，每次打开必须重新登录
@@ -1229,16 +1558,17 @@ const app = createApp({
     })();
 
     return {
-      token,me,loading,loginForm,page,dashStats,recentLogs,
+      token,me,loading,loginForm,page,dashStats,recentLogs,logSummary,
       doLogin,doLogout,switchAccount,roleColor,onMenu,refreshDashboard,
       venues,venueFilter,venueTypes,venueDlg,openVenueDlg,saveVenue,delVenue,loadVenues,loadVenueTypes,
       crops,batches,cropTab,cropDlg,batchDlg,openCropDlg,saveCrop,delCrop,openBatchDlg,saveBatch,delBatch,loadCrops,loadBatches,
       projects,teachers,projectDlg,openProjectDlg,saveProject,delProject,loadProjects,loadTeachers,
       equipment,equipDlg,openEquipDlg,saveEquip,delEquip,loadEquipment,loadLowStock,
-      sessions,attRecords,attSessionName,checkinForm,checkinLoading,myAttendance,loadSessions,viewAttendance,doCheckin,loadMyAttendance,delSession,
+      sessions,attRecords,attSessionName,pendingSessions,checkinLoading,checkinTarget,myAttendance,loadSessions,loadPendingSessions,viewAttendance,quickCheckin,loadMyAttendance,onSort,delSession,
       myProjects,publishDlg,openPublishDlg,savePublish,loadMyProjects,
+      myBorrows,borrowDlg,maxBorrowQty,loadMyBorrows,openBorrowDlg,saveBorrow,approveBorrow,returnBorrow,
       users,userDlg,openUserDlg,saveUser,delUser,loadUsers,canDeleteUser,restoreUser,
-      logs,logFilter,logDlg,loadLogs,delLog,delLogBatch,openLogDlg,saveLog,
+      logs,logFilter,logDlg,loadLogs,delLog,delLogBatch,openLogDlg,saveLog,loadLogSummary,
       pwdForm,doChangePwd,profileForm,doChangeProfile,
       resetPwdDlg,canResetPassword,openResetPwdDlg,doResetPwd,
     };
