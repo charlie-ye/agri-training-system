@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, func, text, desc
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import os, hashlib, secrets
 
 # ==================== 数据库配置 ====================
@@ -342,27 +342,27 @@ def dashboard_logs(db: Session = Depends(get_db)):
 
 @app.get("/api/dashboard/charts", tags=["仪表盘"])
 def dashboard_charts(db: Session = Depends(get_db)):
-    """返回图表数据：角色分布、器材库存、项目状态、考勤统计"""
-    # 角色分布
+    """返回8组图表数据：角色分布、器材库存、项目状态、考勤趋势、场地使用、借用趋势、批次分布、签到率"""
+    from sqlalchemy import func as sf
+    today = datetime.now().date()
+
+    # 1. 角色分布
     roles = db.query(角色表).all()
     角色分布 = []
     for r in roles:
         cnt = db.query(func.count(用户表.用户ID)).filter(用户表.角色ID == r.角色ID, 用户表.是否启用 == 1).scalar() or 0
         角色分布.append({"角色名称": r.角色名称, "人数": cnt})
 
-    # 器材库存概览
+    # 2. 器材库存概览
     器材总数 = db.query(func.count(器材档案表.器材ID)).scalar() or 0
     low = db.query(func.count(器材档案表.器材ID)).filter(器材档案表.当前库存 <= 器材档案表.最低库存).scalar() or 0
     器材库存 = {"总数": 器材总数, "低库存数": low, "正常数": 器材总数 - low}
 
-    # 项目状态分布
-    from sqlalchemy import func as sa_func
-    results = db.query(实训项目表.项目状态, sa_func.count(实训项目表.项目ID)).group_by(实训项目表.项目状态).all()
+    # 3. 项目状态分布
+    results = db.query(实训项目表.项目状态, sf.count(实训项目表.项目ID)).group_by(实训项目表.项目状态).all()
     项目状态 = [{"状态": s, "数量": c} for s, c in results]
 
-    # 考勤统计：近7天每日签到数
-    from datetime import timedelta
-    today = datetime.now().date()
+    # 4. 近7天考勤趋势
     考勤趋势 = []
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
@@ -371,11 +371,44 @@ def dashboard_charts(db: Session = Depends(get_db)):
         ).scalar() or 0
         考勤趋势.append({"日期": str(d), "签到数": cnt})
 
+    # 5. 场地使用状态分布（环形图）
+    venue_stats = db.query(实训场地表.使用状态, sf.count(实训场地表.场地ID)).group_by(实训场地表.使用状态).all()
+    场地使用 = [{"状态": s, "数量": c} for s, c in venue_stats]
+
+    # 6. 近30天借用趋势（折线图）
+    借用趋势 = []
+    for i in range(29, -1, -1):
+        d = today - timedelta(days=i)
+        cnt = db.query(func.count(借用记录表.借用ID)).filter(
+            func.date(借用记录表.借用日期) == d
+        ).scalar() or 0
+        cnt += db.query(func.count(消耗记录表.消耗ID)).filter(消耗记录表.消耗日期 == d).scalar() or 0
+        借用趋势.append({"日期": str(d)[5:], "数量": cnt})
+
+    # 7. 批次生长状态分布（柱状图）
+    batch_stats = db.query(培育批次表.生长状态, sf.count(培育批次表.批次ID)).group_by(培育批次表.生长状态).all()
+    批次分布 = [{"状态": s, "数量": c} for s, c in batch_stats]
+
+    # 8. 学生签到率（项目维度，条形图）
+    项目签到率 = []
+    projects = db.query(实训项目表).filter(实训项目表.项目状态.in_(["招募中","进行中"])).all()
+    for p in projects:
+        enrolled = db.query(func.count(学生报名表.报名ID)).filter(学生报名表.项目ID == p.项目ID, 学生报名表.报名状态 == "已通过").scalar() or 0
+        sessions = db.query(考勤场次表.场次ID).filter(考勤场次表.项目ID == p.项目ID).all()
+        sid_list = [s[0] for s in sessions]
+        attended = 0
+        if sid_list:
+            attended = db.query(func.count(func.distinct(签到记录表.学生ID))).filter(
+                签到记录表.场次ID.in_(sid_list), 签到记录表.签到状态.in_(["出勤","迟到"])
+            ).scalar() or 0
+        rate = round(attended / enrolled * 100, 1) if enrolled > 0 else 0
+        项目签到率.append({"项目名称": p.项目名称[:8], "应到": enrolled, "实到": attended, "签到率": rate})
+
     return {
-        "角色分布": 角色分布,
-        "器材库存": 器材库存,
-        "项目状态": 项目状态,
-        "考勤趋势": 考勤趋势
+        "角色分布": 角色分布, "器材库存": 器材库存,
+        "项目状态": 项目状态, "考勤趋势": 考勤趋势,
+        "场地使用": 场地使用, "借用趋势": 借用趋势,
+        "批次分布": 批次分布, "项目签到率": 项目签到率
     }
 
 # ==================== 用户管理 ====================
@@ -396,14 +429,17 @@ def list_users(all: bool = False, db: Session = Depends(get_db)):
 def create_user(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     if db.query(用户表).filter(用户表.用户名 == data["用户名"]).first():
         raise HTTPException(400, "用户名已存在")
+    role_id = data.get("角色ID", 3)
+    role_names = {1:"管理员",2:"教师",3:"学生"}
+    role_name = role_names.get(role_id, "未知")
     u = 用户表(
         用户名=data["用户名"], 真实姓名=data["真实姓名"],
-        学号工号=data.get("学号工号", ""), 角色ID=data.get("角色ID", 3),
+        学号工号=data.get("学号工号", ""), 角色ID=role_id,
         密码哈希=sha256(data.get("密码", "123456")), 手机号=data.get("手机号", ""),
         邮箱=data.get("邮箱", ""), 是否启用=1, 创建时间=datetime.now()
     )
     db.add(u); db.commit(); db.refresh(u)
-    log = 操作日志表(用户ID=user.用户ID, 模块="用户", 操作类型="新增", 目标类型="用户表", 目标ID=u.用户ID, 描述=f"新增用户 {u.用户名}", 操作时间=datetime.now())
+    log = 操作日志表(用户ID=user.用户ID, 模块="用户", 操作类型="新增", 目标类型="用户表", 目标ID=u.用户ID, 描述=f"{user.真实姓名} 新增了{role_name}「{u.真实姓名}」（账号：{u.用户名}）", 操作时间=datetime.now())
     db.add(log); db.commit()
     return {"ok": True, "用户ID": u.用户ID}
 
@@ -430,8 +466,9 @@ def delete_user(uid: int, user=Depends(auth_required), db: Session = Depends(get
     u = db.query(用户表).filter(用户表.用户ID == uid).first()
     if not u: raise HTTPException(404, "用户不存在")
     name = u.用户名
+    realname = u.真实姓名
     u.是否启用 = 0
-    log = 操作日志表(用户ID=user.用户ID, 模块="用户", 操作类型="删除", 目标类型="用户表", 目标ID=uid, 描述=f"禁用用户 {name}", 操作时间=datetime.now())
+    log = 操作日志表(用户ID=user.用户ID, 模块="用户", 操作类型="删除", 目标类型="用户表", 目标ID=uid, 描述=f"{user.真实姓名} 禁用了用户「{realname}」（账号：{name}）", 操作时间=datetime.now())
     db.add(log); db.commit()
     return {"ok": True}
 
@@ -520,14 +557,14 @@ def delete_venue(vid: int, user=Depends(auth_required), db: Session = Depends(ge
     if user.角色ID != 1:
         raise HTTPException(403, "只有管理员可以删除场地")
     # 级联清除
-    db.query(培育批次表).filter(培育批次表.场地ID == vid).delete()
-    db.query(场地预约表).filter(场地预约表.场地ID == vid).delete()
-    db.query(场地维护表).filter(场地维护表.场地ID == vid).delete()
+    batch_del = db.query(培育批次表).filter(培育批次表.场地ID == vid).delete()
+    book_del = db.query(场地预约表).filter(场地预约表.场地ID == vid).delete()
+    maint_del = db.query(场地维护表).filter(场地维护表.场地ID == vid).delete()
     v = db.query(实训场地表).filter(实训场地表.场地ID == vid).first()
     if v:
         name = v.场地名称
         db.delete(v)
-        log = 操作日志表(用户ID=user.用户ID, 模块="场地", 操作类型="删除", 目标类型="实训场地表", 目标ID=vid, 描述=f"删除场地 {name}", 操作时间=datetime.now())
+        log = 操作日志表(用户ID=user.用户ID, 模块="场地", 操作类型="删除", 目标类型="实训场地表", 目标ID=vid, 描述=f"{user.真实姓名} 删除了场地「{name}」（含关联批次/预约/维护记录）", 操作时间=datetime.now())
         db.add(log); db.commit()
     return {"ok": True}
 
@@ -548,6 +585,8 @@ def create_crop(data: dict = Body(...), user=Depends(auth_required), db: Session
         描述=data.get("描述", "")
     )
     db.add(c); db.commit(); db.refresh(c)
+    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="新增", 目标类型="作物品种表", 目标ID=c.品种ID, 描述=f"{user.真实姓名} 新增了作物品种「{c.品种名称}」", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True, "品种ID": c.品种ID}
 
 @app.put("/api/crops/{cid}", tags=["作物管理"])
@@ -564,7 +603,10 @@ def update_crop(cid: int, data: dict = Body(...), user=Depends(auth_required), d
 def delete_crop(cid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
     c = db.query(作物品种表).filter(作物品种表.品种ID == cid).first()
     if not c: raise HTTPException(404, "作物不存在")
+    name = c.品种名称
     db.delete(c); db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="删除", 目标类型="作物品种表", 目标ID=cid, 描述=f"{user.真实姓名} 删除了作物品种「{name}」", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True}
 
 @app.get("/api/batches", tags=["作物管理"])
@@ -590,6 +632,8 @@ def create_batch(data: dict = Body(...), user=Depends(auth_required), db: Sessio
         存活率=data.get("存活率"), 记录人ID=user.用户ID, 创建时间=datetime.now()
     )
     db.add(b); db.commit(); db.refresh(b)
+    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="新增", 目标类型="培育批次表", 目标ID=b.批次ID, 描述=f"{user.真实姓名} 新增了培育批次「{b.批次名称}」（数量{b.数量}株）", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True, "批次ID": b.批次ID}
 
 @app.put("/api/batches/{bid}", tags=["作物管理"])
@@ -606,7 +650,10 @@ def update_batch(bid: int, data: dict = Body(...), user=Depends(auth_required), 
 def delete_batch(bid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
     b = db.query(培育批次表).filter(培育批次表.批次ID == bid).first()
     if not b: raise HTTPException(404, "批次不存在")
+    name, qty = b.批次名称, b.数量
     db.delete(b); db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="删除", 目标类型="培育批次表", 目标ID=bid, 描述=f"{user.真实姓名} 删除了培育批次「{name}」（{qty}株）", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True}
 
 # ==================== 项目管理 ====================
@@ -646,20 +693,23 @@ def update_project(pid: int, data: dict = Body(...), user=Depends(auth_required)
         if k in data and data[k] is not None:
             setattr(p, k, data[k])
     db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="项目", 操作类型="修改", 目标类型="实训项目表", 目标ID=pid, 描述=f"{user.真实姓名} 修改了项目「{p.项目名称}」", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/projects/{pid}", tags=["项目管理"])
 def delete_project(pid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
     sids = [s.场次ID for s in db.query(考勤场次表).filter(考勤场次表.项目ID == pid).all()]
+    att_del = 0
     for sid in sids:
-        db.query(签到记录表).filter(签到记录表.场次ID == sid).delete()
-    db.query(考勤场次表).filter(考勤场次表.项目ID == pid).delete()
-    db.query(学生报名表).filter(学生报名表.项目ID == pid).delete()
+        att_del += db.query(签到记录表).filter(签到记录表.场次ID == sid).delete()
+    session_del = db.query(考勤场次表).filter(考勤场次表.项目ID == pid).delete()
+    enroll_del = db.query(学生报名表).filter(学生报名表.项目ID == pid).delete()
     p = db.query(实训项目表).filter(实训项目表.项目ID == pid).first()
     if p:
         name = p.项目名称
         db.delete(p)
-        log = 操作日志表(用户ID=user.用户ID, 模块="项目", 操作类型="删除", 目标类型="实训项目表", 目标ID=pid, 描述=f"删除项目 {name}", 操作时间=datetime.now())
+        log = 操作日志表(用户ID=user.用户ID, 模块="项目", 操作类型="删除", 目标类型="实训项目表", 目标ID=pid, 描述=f"{user.真实姓名} 删除了项目「{name}」，级联删除{att_del}条签到+{session_del}场考勤+{enroll_del}条报名", 操作时间=datetime.now())
         db.add(log); db.commit()
     return {"ok": True}
 
@@ -721,6 +771,8 @@ def update_equipment(eid: int, data: dict = Body(...), user=Depends(auth_require
         if k in data and data[k] is not None:
             setattr(e, k, data[k])
     db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="修改", 目标类型="器材档案表", 目标ID=eid, 描述=f"{user.真实姓名} 修改了器材「{e.器材名称}」信息", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/equipment/{eid}", tags=["器材管理"])
@@ -730,8 +782,9 @@ def delete_equipment(eid: int, user=Depends(auth_required), db: Session = Depend
     e = db.query(器材档案表).filter(器材档案表.器材ID == eid).first()
     if e:
         name = e.器材名称
+        stock = e.当前库存
         db.delete(e)
-        log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="删除", 目标类型="器材档案表", 目标ID=eid, 描述=f"删除器材 {name}", 操作时间=datetime.now())
+        log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="删除", 目标类型="器材档案表", 目标ID=eid, 描述=f"{user.真实姓名} 删除了器材「{name}」（库存{stock}件，已全部清空）", 操作时间=datetime.now())
         db.add(log); db.commit()
     return {"ok": True}
 
@@ -751,6 +804,67 @@ def list_borrows(db: Session = Depends(get_db)):
         "器材名称": db.query(器材档案表).filter(器材档案表.器材ID == b.器材ID).first().器材名称 if b.器材ID else "",
         "用户姓名": db.query(用户表).filter(用户表.用户ID == b.用户ID).first().真实姓名 if b.用户ID else ""
     } for b in borrows]
+
+# ==================== 器材借用（所有人可用） ====================
+@app.post("/api/borrows", tags=["器材管理"])
+def create_borrow(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    """申请借用器材（所有人可用）"""
+    equip = db.query(器材档案表).filter(器材档案表.器材ID == data["器材ID"]).first()
+    if not equip:
+        raise HTTPException(404, "器材不存在")
+    qty = int(data.get("借用数量", 1))
+    if qty <= 0:
+        raise HTTPException(400, "借用数量必须大于0")
+    if equip.当前库存 < qty:
+        raise HTTPException(400, f"库存不足，当前仅剩 {equip.当前库存} 件")
+    b = 借用记录表(
+        器材ID=data["器材ID"], 用户ID=user.用户ID,
+        借用数量=qty, 借用日期=datetime.now(),
+        应还日期=data.get("应还日期") or (datetime.now() + timedelta(days=7)),
+        借用状态="待审批", 项目ID=data.get("项目ID")
+    )
+    db.add(b); db.commit(); db.refresh(b)
+    log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="新增", 目标类型="借用记录表", 目标ID=b.借用ID, 描述=f"{user.真实姓名} 申请借用「{equip.器材名称}」{qty}件", 操作时间=datetime.now())
+    db.add(log); db.commit()
+    return {"ok": True, "借用ID": b.借用ID}
+
+@app.put("/api/borrows/{bid}/approve", tags=["器材管理"])
+def approve_borrow(bid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """审批通过借用申请（管理员/教师）"""
+    if user.角色ID not in [1, 2]:
+        raise HTTPException(403, "仅管理员和教师可审批")
+    b = db.query(借用记录表).filter(借用记录表.借用ID == bid).first()
+    if not b: raise HTTPException(404, "借用记录不存在")
+    if b.借用状态 != "待审批":
+        raise HTTPException(400, f"该申请状态为「{b.借用状态}」，无法审批")
+    equip = db.query(器材档案表).filter(器材档案表.器材ID == b.器材ID).first()
+    if equip.当前库存 < b.借用数量:
+        raise HTTPException(400, f"库存不足，当前仅剩 {equip.当前库存} 件")
+    equip.当前库存 -= b.借用数量
+    b.借用状态 = "借用中"
+    b.审批人ID = user.用户ID
+    db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="修改", 目标类型="借用记录表", 目标ID=bid, 描述=f"{user.真实姓名} 审批通过器材借用（{equip.器材名称}，借出{b.借用数量}件，库存{equip.当前库存}）", 操作时间=datetime.now())
+    db.add(log); db.commit()
+    return {"ok": True}
+
+@app.put("/api/borrows/{bid}/return", tags=["器材管理"])
+def return_borrow(bid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """归还器材（管理员/教师操作）"""
+    if user.角色ID not in [1, 2]:
+        raise HTTPException(403, "仅管理员和教师可操作归还")
+    b = db.query(借用记录表).filter(借用记录表.借用ID == bid).first()
+    if not b: raise HTTPException(404, "借用记录不存在")
+    if b.借用状态 != "借用中":
+        raise HTTPException(400, f"该记录状态为「{b.借用状态}」，无法归还")
+    equip = db.query(器材档案表).filter(器材档案表.器材ID == b.器材ID).first()
+    equip.当前库存 += b.借用数量
+    b.借用状态 = "已归还"
+    b.实还日期 = datetime.now()
+    db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="修改", 目标类型="借用记录表", 目标ID=bid, 描述=f"{user.真实姓名} 确认归还「{equip.器材名称}」{b.借用数量}件（库存恢复到{equip.当前库存}）", 操作时间=datetime.now())
+    db.add(log); db.commit()
+    return {"ok": True}
 
 # ==================== 考勤管理 ====================
 @app.get("/api/sessions", tags=["考勤管理"])
@@ -789,10 +903,13 @@ def update_session(sid: int, data: dict = Body(...), user=Depends(auth_required)
 
 @app.delete("/api/sessions/{sid}", tags=["考勤管理"])
 def delete_session(sid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
-    db.query(签到记录表).filter(签到记录表.场次ID == sid).delete()
+    del_count = db.query(签到记录表).filter(签到记录表.场次ID == sid).delete()
     s = db.query(考勤场次表).filter(考勤场次表.场次ID == sid).first()
+    sname = s.场次日期 if s else "未知"
     if s: db.delete(s)
     db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="考勤", 操作类型="删除", 目标类型="考勤场次表", 目标ID=sid, 描述=f"{user.真实姓名} 删除了考勤场次（{sname}），清空了{del_count}条签到记录", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True}
 
 @app.get("/api/attendance", tags=["考勤管理"])
@@ -815,14 +932,40 @@ def my_attendance(user=Depends(auth_required), db: Session = Depends(get_db)):
         "签到时间": str(a.签到时间)[:16] if a.签到时间 else "", "签到状态": a.签到状态,
     } for a in records]
 
+@app.get("/api/my_pending_sessions", tags=["考勤管理"])
+def my_pending_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
+    """获取当前学生未签到的考勤场次列表（教师发布后学生就能看到）"""
+    if user.角色ID != 3:
+        raise HTTPException(400, "仅学生可查看待签到场次")
+    # 该学生已报名的项目
+    enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
+    project_ids = [e.项目ID for e in enrolls]
+    if not project_ids:
+        return []
+    # 这些项目中所有的考勤场次
+    all_sessions = db.query(考勤场次表).filter(考勤场次表.项目ID.in_(project_ids)).order_by(desc(考勤场次表.场次日期)).all()
+    # 已签到的场次
+    checked = db.query(签到记录表).filter(签到记录表.学生ID == user.用户ID).all()
+    checked_ids = {c.场次ID for c in checked}
+    # 未签到的场次
+    result = []
+    for s in all_sessions:
+        if s.场次ID not in checked_ids:
+            proj = db.query(实训项目表).filter(实训项目表.项目ID == s.项目ID).first()
+            result.append({
+                "场次ID": s.场次ID,
+                "项目名称": proj.项目名称 if proj else "",
+                "场次日期": str(s.场次日期) if s.场次日期 else "",
+                "开始时间": str(s.开始时间) if s.开始时间 else "",
+                "结束时间": str(s.结束时间) if s.结束时间 else "",
+                "地点": s.地点 or "",
+                "实到人数": s.实到人数 or 0
+            })
+    return result
+
 @app.post("/api/attendance/checkin", tags=["考勤管理"])
 def checkin(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
-    sid = data.get("学生ID")
-    if not sid:
-        sno = data.get("学号工号", "")
-        su = db.query(用户表).filter(用户表.学号工号 == sno, 用户表.角色ID == 3).first()
-        if not su: raise HTTPException(404, "学生不存在或学号工号错误")
-        sid = su.用户ID
+    sid = user.用户ID  # 学生用自己的身份签到，无需传学号
     session = db.query(考勤场次表).filter(考勤场次表.场次ID == data["场次ID"]).first()
     if not session: raise HTTPException(404, "考勤场次不存在")
     existing = db.query(签到记录表).filter(签到记录表.场次ID == data["场次ID"], 签到记录表.学生ID == sid).first()
@@ -835,6 +978,8 @@ def checkin(data: dict = Body(...), user=Depends(auth_required), db: Session = D
     ).scalar() or 0
     session.实到人数 = cnt
     db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="考勤", 操作类型="新增", 目标类型="签到记录表", 目标ID=a.签到ID, 描述=f"{user.真实姓名} 签到成功（场次{session.场次ID}）", 操作时间=datetime.now())
+    db.add(log); db.commit()
     return {"ok": True, "签到ID": a.签到ID}
 
 # ==================== 日志管理 ====================
@@ -885,12 +1030,47 @@ def delete_logs_batch(模块: str = None, user=Depends(auth_required), db: Sessi
     db.add(log); db.commit()
     return {"ok": True, "count": count}
 
+@app.get("/api/logs/summary", tags=["日志管理"])
+def logs_summary(db: Session = Depends(get_db)):
+    """日志摘要：今日操作统计 + 各模块操作件数 + 各用户活跃度"""
+    today = datetime.now().date()
+    today_logs = db.query(操作日志表).filter(func.date(操作日志表.操作时间) == today)
+    今日新增 = today_logs.filter(操作日志表.操作类型 == "新增").count()
+    今日删除 = today_logs.filter(操作日志表.操作类型 == "删除").count()
+    今日修改 = today_logs.filter(操作日志表.操作类型 == "修改").count()
+    今日操作总数 = 今日新增 + 今日删除 + 今日修改
+    # 按模块统计
+    module_counts = db.query(操作日志表.模块, func.count(操作日志表.日志ID)).group_by(操作日志表.模块).all()
+    模块统计 = [{"模块": m, "数量": c} for m, c in module_counts if c > 0]
+    # 最近12条详细日志
+    recent = db.query(操作日志表).order_by(desc(操作日志表.操作时间)).limit(12).all()
+    最近日志 = [{
+        "日志ID": l.日志ID, "模块": l.模块, "操作类型": l.操作类型,
+        "描述": l.描述, "操作时间": str(l.操作时间)[:16] if l.操作时间 else "",
+        "用户姓名": db.query(用户表).filter(用户表.用户ID == l.用户ID).first().真实姓名 if l.用户ID else "",
+        "目标类型": l.目标类型, "用户ID": l.用户ID
+    } for l in recent]
+    # 今日用户活跃排行
+    user_act = db.query(操作日志表.用户ID, func.count(操作日志表.日志ID)).filter(
+        func.date(操作日志表.操作时间) == today
+    ).group_by(操作日志表.用户ID).order_by(desc(func.count(操作日志表.日志ID))).limit(5).all()
+    活跃用户 = [{
+        "用户姓名": db.query(用户表).filter(用户表.用户ID == uid).first().真实姓名 if uid else "系统",
+        "操作次数": cnt
+    } for uid, cnt in user_act]
+    return {
+        "今日新增": 今日新增, "今日删除": 今日删除, "今日修改": 今日修改,
+        "今日操作总数": 今日操作总数,
+        "模块统计": 模块统计, "最近日志": 最近日志,
+        "活跃用户": 活跃用户
+    }
+
 # ==================== 视图接口 ====================
 @app.get("/api/views/low_stock", tags=["视图"])
 def view_low_stock(db: Session = Depends(get_db)):
     items = db.query(器材档案表).filter(器材档案表.当前库存 <= 器材档案表.最低库存).order_by(器材档案表.当前库存).all()
     return [{
-        "器材编号": e.器材编号, "器材名称": e.器材名称,
+        "器材ID": e.器材ID, "器材编号": e.器材编号, "器材名称": e.器材名称,
         "当前库存": e.当前库存, "最低库存": e.最低库存, "单位": e.单位,
         "分类名称": db.query(器材分类表).filter(器材分类表.分类ID == e.分类ID).first().分类名称 if e.分类ID else ""
     } for e in items]
