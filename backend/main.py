@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, func, text, desc
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Optional, List
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as time_type
 import os, hashlib, secrets
 
 # ==================== 数据库配置 ====================
@@ -734,6 +734,167 @@ def update_enrollment(eid: int, data: dict = Body(...), user=Depends(auth_requir
     db.commit()
     return {"ok": True}
 
+# ==================== 学生项目报名 ====================
+@app.get("/api/my-enrollments", tags=["学生报名"])
+def my_enrollments(user=Depends(auth_required), db: Session = Depends(get_db)):
+    """当前学生查看自己的所有项目报名状态"""
+    if user.角色ID != 3:
+        raise HTTPException(400, "仅学生可查看")
+    enrollments = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID).all()
+    result = []
+    for e in enrollments:
+        proj = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first()
+        teacher_name = ""
+        if proj and proj.负责教师ID:
+            t = db.query(用户表).filter(用户表.用户ID == proj.负责教师ID).first()
+            teacher_name = t.真实姓名 if t else ""
+        result.append({
+            "报名ID": e.报名ID, "项目ID": e.项目ID,
+            "项目名称": proj.项目名称 if proj else "(已删除)",
+            "负责教师": teacher_name, "报名状态": e.报名状态,
+            "报名时间": str(e.报名时间)[:16] if e.报名时间 else "",
+            "综合成绩": float(e.综合成绩) if e.综合成绩 else None
+        })
+    # 同时返回可报名的项目列表（招募中/进行中，且该学生未报过名的）
+    enrolled_pids = {e.项目ID for e in enrollments}
+    available = []
+    projects = db.query(实训项目表).filter(
+        实训项目表.项目状态.in_(["招募中", "进行中"])
+    ).all()
+    for p in projects:
+        if p.项目ID not in enrolled_pids:
+            t = db.query(用户表).filter(用户表.用户ID == p.负责教师ID).first()
+            enrolled_count = db.query(func.count(学生报名表.报名ID)).filter(
+                学生报名表.项目ID == p.项目ID, 学生报名表.报名状态 == "已通过"
+            ).scalar() or 0
+            available.append({
+                "项目ID": p.项目ID, "项目名称": p.项目名称,
+                "项目描述": p.项目描述 or "", "负责教师": t.真实姓名 if t else "",
+                "人数上限": p.人数上限 or 30,
+                "已报名人数": enrolled_count,
+                "开始日期": str(p.开始日期) if p.开始日期 else "",
+                "结束日期": str(p.结束日期) if p.结束日期 else "",
+                "项目状态": p.项目状态
+            })
+    return {"my_enrollments": result, "available_projects": available}
+
+@app.post("/api/my-enrollments", tags=["学生报名"])
+def submit_enrollment(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    """学生提交项目报名申请"""
+    if user.角色ID != 3:
+        raise HTTPException(400, "仅学生可报名")
+    pid = data.get("项目ID")
+    if not pid:
+        raise HTTPException(400, "缺少项目ID")
+    # 检查项目是否存在且可报名
+    proj = db.query(实训项目表).filter(实训项目表.项目ID == pid).first()
+    if not proj:
+        raise HTTPException(404, "项目不存在")
+    if proj.项目状态 not in ("招募中", "进行中"):
+        raise HTTPException(400, f"该项目当前状态为「{proj.项目状态}」，不可报名")
+    # 检查是否已报名
+    existing = db.query(学生报名表).filter(
+        学生报名表.项目ID == pid, 学生报名表.学生ID == user.用户ID
+    ).first()
+    if existing:
+        raise HTTPException(400, f"你已报名此项目（当前状态：{existing.报名状态}）")
+    now = datetime.now()
+    e = 学生报名表(项目ID=pid, 学生ID=user.用户ID, 报名状态="待审核", 报名时间=now)
+    db.add(e); db.flush()
+    log = 操作日志表(
+        用户ID=user.用户ID, 模块="项目", 操作类型="报名",
+        目标类型="学生报名表", 目标ID=e.报名ID,
+        描述=f"{user.真实姓名} 申请报名项目「{proj.项目名称}」",
+        操作时间=now
+    )
+    db.add(log); db.commit()
+    return {"ok": True, "报名ID": e.报名ID}
+
+# ==================== 报名审核（管理员/教师） ====================
+@app.get("/api/enrollments/pending", tags=["报名审核"])
+def pending_enrollments(user=Depends(auth_required), db: Session = Depends(get_db)):
+    """获取待审核的报名列表：管理员看全部，教师只看自己负责的项目"""
+    q = db.query(学生报名表).filter(学生报名表.报名状态 == "待审核")
+    # 教师只能看到自己负责的项目的报名
+    if user.角色ID == 2:
+        teacher_projects = db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()
+        project_ids = [p[0] for p in teacher_projects]
+        if not project_ids:
+            return []
+        q = q.filter(学生报名表.项目ID.in_(project_ids))
+    enrollments = q.order_by(学生报名表.报名时间).all()
+    result = []
+    for e in enrollments:
+        proj = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first()
+        student = db.query(用户表).filter(用户表.用户ID == e.学生ID).first()
+        teacher_name = ""
+        if proj and proj.负责教师ID:
+            t = db.query(用户表).filter(用户表.用户ID == proj.负责教师ID).first()
+            teacher_name = t.真实姓名 if t else ""
+        result.append({
+            "报名ID": e.报名ID, "项目ID": e.项目ID,
+            "项目名称": proj.项目名称 if proj else "(已删除)",
+            "负责教师": teacher_name,
+            "学生ID": e.学生ID,
+            "学生姓名": student.真实姓名 if student else "(未知)",
+            "学生学号": student.用户名 if student else "",
+            "报名时间": str(e.报名时间)[:16] if e.报名时间 else "",
+        })
+    return result
+
+@app.put("/api/enrollments/{eid}/approve", tags=["报名审核"])
+def approve_enrollment(eid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """审核通过报名"""
+    if user.角色ID not in (1, 2):
+        raise HTTPException(400, "仅管理员和教师可审核")
+    e = db.query(学生报名表).filter(学生报名表.报名ID == eid).first()
+    if not e:
+        raise HTTPException(404, "报名记录不存在")
+    if e.报名状态 != "待审核":
+        raise HTTPException(400, f"该记录当前状态为「{e.报名状态}」，无法审核通过")
+    # 教师只能审核自己负责的项目
+    if user.角色ID == 2:
+        proj = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first()
+        if not proj or proj.负责教师ID != user.用户ID:
+            raise HTTPException(400, "你无权审核此项目的报名")
+    e.报名状态 = "已通过"
+    now = datetime.now()
+    log = 操作日志表(
+        用户ID=user.用户ID, 模块="项目", 操作类型="审核通过",
+        目标类型="学生报名表", 目标ID=eid,
+        描述=f"{user.真实姓名} 审核通过了学生(ID={e.学生ID})对项目(ID={e.项目ID})的报名申请",
+        操作时间=now
+    )
+    db.add(log); db.commit()
+    return {"ok": True}
+
+@app.put("/api/enrollments/{eid}/reject", tags=["报名审核"])
+def reject_enrollment(eid: int, data: dict = Body(default=None), user=Depends(auth_required), db: Session = Depends(get_db)):
+    """拒绝报名"""
+    if user.角色ID not in (1, 2):
+        raise HTTPException(400, "仅管理员和教师可审核")
+    e = db.query(学生报名表).filter(学生报名表.报名ID == eid).first()
+    if not e:
+        raise HTTPException(404, "报名记录不存在")
+    if e.报名状态 != "待审核":
+        raise HTTPException(400, f"该记录当前状态为「{e.报名状态}」")
+    # 教师只能审核自己负责的项目
+    if user.角色ID == 2:
+        proj = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first()
+        if not proj or proj.负责教师ID != user.用户ID:
+            raise HTTPException(400, "你无权审核此项目的报名")
+    reason = (data or {}).get("原因") or ""
+    e.报名状态 = "已拒绝"
+    now = datetime.now()
+    log = 操作日志表(
+        用户ID=user.用户ID, 模块="项目", 操作类型="拒绝",
+        目标类型="学生报名表", 目标ID=eid,
+        描述=f"{user.真实姓名} 拒绝了学生(ID={e.学生ID})对项目(ID={e.项目ID})的报名申请" + (f"，原因：{reason}" if reason else ""),
+        操作时间=now
+    )
+    db.add(log); db.commit()
+    return {"ok": True}
+
 # ==================== 器材管理 ====================
 @app.get("/api/equipment", tags=["器材管理"])
 def list_equipment(db: Session = Depends(get_db)):
@@ -934,23 +1095,29 @@ def my_attendance(user=Depends(auth_required), db: Session = Depends(get_db)):
 
 @app.get("/api/my_pending_sessions", tags=["考勤管理"])
 def my_pending_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
-    """获取当前学生未签到的考勤场次列表（教师发布后学生就能看到）"""
+    """获取当前学生未签到的考勤场次列表（仅限已报名且审核通过的项目）"""
     if user.角色ID != 3:
         raise HTTPException(400, "仅学生可查看待签到场次")
-    # 该学生已报名的项目
-    enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
+    # 该学生已报名且审核通过的项目
+    enrolls = db.query(学生报名表).filter(
+        学生报名表.学生ID == user.用户ID,
+        学生报名表.报名状态 == "已通过"
+    ).all()
     project_ids = [e.项目ID for e in enrolls]
     if not project_ids:
         return []
     # 这些项目中所有的考勤场次
-    all_sessions = db.query(考勤场次表).filter(考勤场次表.项目ID.in_(project_ids)).order_by(desc(考勤场次表.场次日期)).all()
+    all_sessions = db.query(考勤场次表).filter(
+        考勤场次表.项目ID.in_(project_ids)
+    ).order_by(desc(考勤场次表.场次日期)).all()
     # 已签到的场次
     checked = db.query(签到记录表).filter(签到记录表.学生ID == user.用户ID).all()
     checked_ids = {c.场次ID for c in checked}
-    # 未签到的场次
+    # 未签到的场次（仅显示当天及今天之后的场次）
+    today = datetime.now().date()
     result = []
     for s in all_sessions:
-        if s.场次ID not in checked_ids:
+        if s.场次ID not in checked_ids and s.场次日期 >= today:
             proj = db.query(实训项目表).filter(实训项目表.项目ID == s.项目ID).first()
             result.append({
                 "场次ID": s.场次ID,
@@ -971,7 +1138,23 @@ def checkin(data: dict = Body(...), user=Depends(auth_required), db: Session = D
     existing = db.query(签到记录表).filter(签到记录表.场次ID == data["场次ID"], 签到记录表.学生ID == sid).first()
     if existing:
         raise HTTPException(400, "已签到，不可重复")
-    a = 签到记录表(场次ID=data["场次ID"], 学生ID=sid, 签到时间=datetime.now(), 签到状态="出勤")
+    now = datetime.now()
+    # 在开始时间到结束时间窗口内签到均为"出勤"，超过结束时间不允许签到
+    checkin_status = "出勤"
+    if session.开始时间 is not None and session.结束时间 is not None:
+        # MySQL TIME 可能返回 timedelta，统一转换为当天 datetime
+        def to_dt(t, d):
+            if isinstance(t, time_type):
+                return datetime.combine(d, t)
+            elif isinstance(t, timedelta):
+                return datetime.combine(d, (datetime.min + t).time())
+            return None
+        start_dt = to_dt(session.开始时间, session.场次日期)
+        end_dt   = to_dt(session.结束时间, session.场次日期)
+        if start_dt and end_dt:
+            if now > end_dt:
+                raise HTTPException(400, "签到时间已过，无法签到")
+    a = 签到记录表(场次ID=data["场次ID"], 学生ID=sid, 签到时间=now, 签到状态=checkin_status)
     db.add(a); db.flush()
     cnt = db.query(func.count(签到记录表.签到ID)).filter(
         签到记录表.场次ID == data["场次ID"], 签到记录表.签到状态.in_(["出勤", "迟到"])

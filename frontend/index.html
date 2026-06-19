@@ -135,7 +135,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           <el-menu-item index="器材借用"><el-icon><box /></el-icon>器材借用</el-menu-item>
           <el-menu-item index="考勤管理"><el-icon><calendar /></el-icon>考勤管理</el-menu-item>
           <el-menu-item index="考勤发布" v-if="me.角色名称==='教师'"><el-icon><edit-pen /></el-icon>考勤发布</el-menu-item>
+          <el-menu-item index="项目报名" v-if="me.角色名称==='学生'"><el-icon><trophy /></el-icon>项目报名</el-menu-item>
           <el-menu-item index="学生签到" v-if="me.角色名称==='学生'"><el-icon><check /></el-icon>我的签到</el-menu-item>
+          <el-menu-item index="报名审核" v-if="me.角色名称!=='学生'"><el-icon><user-filled /></el-icon>报名审核</el-menu-item>
           <el-menu-item index="用户管理" v-if="me.角色名称==='管理员'"><el-icon><user /></el-icon>用户管理</el-menu-item>
           <el-menu-item index="日志管理" v-if="me.角色名称==='管理员'"><el-icon><document /></el-icon>日志管理</el-menu-item>
           <el-menu-item index="修改密码"><el-icon><lock /></el-icon>修改密码</el-menu-item>
@@ -391,7 +393,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-table-column label="操作" width="180" fixed="right">
                 <template #default="{row}">
                   <el-button size="small" type="primary" @click="viewAttendance(row)">查看签到</el-button>
-                  <el-button size="small" type="danger" @click="delSession(row.场次ID)">删除</el-button>
+                  <el-button size="small" type="danger" @click="delSession(row.场次ID)" v-if="me.角色名称!=='学生'">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -466,6 +468,58 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
                 <template #default="{row}"><el-tag :type="row.签到状态==='出勤'?'success':'warning'">{{row.签到状态}}</el-tag></template>
               </el-table-column>
             </el-table>
+          </div>
+        </div>
+
+        <!-- 项目报名（学生） -->
+        <div v-if="page==='项目报名'">
+          <div class="panel">
+            <h3 style="display:flex;align-items:center;gap:8px;">📋 可报名项目 <el-button size="small" @click="loadMyEnrollments" style="margin-left:auto;">🔄 刷新</el-button></h3>
+            <el-table v-if="availableProjects.length>0" :data="availableProjects" border stripe size="small" style="margin-top:12px;">
+              <el-table-column prop="项目名称" label="项目名称" min-width="140"></el-table-column>
+              <el-table-column prop="负责教师" label="负责教师" width="90"></el-table-column>
+              <el-table-column prop="项目状态" label="状态" width="80">
+                <template #default="{row}"><el-tag :type="row.项目状态==='招募中'?'success':'primary'" size="small">{{row.项目状态}}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="开始日期" label="开始日期" width="110"></el-table-column>
+              <el-table-column prop="结束日期" label="结束日期" width="110"></el-table-column>
+              <el-table-column label="已报/上限" width="90" align="center">
+                <template #default="{row}"><span :style="{color: row.已报名人数>=row.人数上限?'#f56c6c':'#67c23a'}">{{ row.已报名人数 }}/{{ row.人数上限 }}</span></template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="success" @click="doEnroll(row)" :disabled="row.已报名人数>=row.人数上限 || enrollLoading">立即报名</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else style="text-align:center;padding:40px;color:#c0c4cc;">
+              <div style="font-size:48px;margin-bottom:12px;">📭</div>
+              <div>暂无可报名的项目</div>
+              <div style="font-size:12px;margin-top:4px;">所有可报名的项目都已报名或已结束</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:16px;">
+            <h3>📝 我的报名记录</h3>
+            <el-table v-if="myEnrollments.length>0" :data="myEnrollments" border stripe size="small" style="margin-top:12px;">
+              <el-table-column prop="项目名称" label="项目名称" min-width="140"></el-table-column>
+              <el-table-column prop="负责教师" label="负责教师" width="90"></el-table-column>
+              <el-table-column prop="报名状态" label="状态" width="90">
+                <template #default="{row}">
+                  <el-tag v-if="row.报名状态==='待审核'" type="warning" size="small">{{row.报名状态}}</el-tag>
+                  <el-tag v-else-if="row.报名状态==='已通过'" type="success" size="small">{{row.报名状态}}</el-tag>
+                  <el-tag v-else-if="row.报名状态==='已拒绝'" type="danger" size="small">{{row.报名状态}}</el-tag>
+                  <el-tag v-else size="small">{{row.报名状态}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="报名时间" label="报名时间" width="160"></el-table-column>
+              <el-table-column prop="综合成绩" label="成绩" width="80" align="right">
+                <template #default="{row}">{{ row.综合成绩 !== null && row.综合成绩 !== undefined ? row.综合成绩 : '-' }}</template>
+              </el-table-column>
+            </el-table>
+            <div v-else style="text-align:center;padding:30px;color:#c0c4cc;">
+              <div style="font-size:36px;margin-bottom:8px;">📋</div>
+              <div>暂无报名记录，快去上方报名吧！</div>
+            </div>
           </div>
         </div>
 
@@ -546,6 +600,37 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
                 <el-button type="success" @click="doChangeProfile" style="width:100%;height:42px;font-size:16px;">保存修改</el-button>
               </el-form-item>
             </el-form>
+          </div>
+        </div>
+
+        <!-- 报名审核（教师+管理员） -->
+        <div v-if="page==='报名审核'">
+          <div class="panel">
+            <h3 style="display:flex;align-items:center;gap:8px;">
+              📋 待审核报名列表
+              <el-tag v-if="me.角色名称==='教师'" type="primary" size="small">仅显示你负责的项目</el-tag>
+              <el-tag v-if="me.角色名称==='管理员'" type="danger" size="small">显示全部项目</el-tag>
+              <el-button size="small" @click="loadPendingEnrollments" style="margin-left:auto;">🔄 刷新</el-button>
+            </h3>
+            <el-table v-if="pendingEnrollments.length>0" :data="pendingEnrollments" border stripe size="small" style="margin-top:12px;">
+              <el-table-column prop="报名ID" label="报名ID" width="75"></el-table-column>
+              <el-table-column prop="项目名称" label="项目名称" min-width="140"></el-table-column>
+              <el-table-column prop="负责教师" label="负责教师" width="90"></el-table-column>
+              <el-table-column prop="学生姓名" label="学生姓名" width="90"></el-table-column>
+              <el-table-column prop="学生学号" label="学号" width="100"></el-table-column>
+              <el-table-column prop="报名时间" label="报名时间" width="160"></el-table-column>
+              <el-table-column label="操作" width="180" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="success" @click="approveEnrollment(row)" :loading="auditLoading===row.报名ID">通过</el-button>
+                  <el-button size="small" type="danger" @click="rejectEnrollment(row)" :loading="auditLoading===row.报名ID">拒绝</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else style="text-align:center;padding:40px;color:#c0c4cc;">
+              <div style="font-size:48px;margin-bottom:12px;">✅</div>
+              <div>暂无待审核的报名申请</div>
+              <div style="font-size:12px;margin-top:4px;">所有报名申请已处理完毕</div>
+            </div>
           </div>
         </div>
 
@@ -1220,6 +1305,8 @@ const app = createApp({
       if (key === '器材管理') loadEquipment();
       if (key === '器材借用') { loadEquipment(); loadMyBorrows(); }
       if (key === '考勤管理' || key === '考勤发布') { loadSessions(); if(me.value.角色名称==='教师') loadMyProjects(); }
+      if (key === '项目报名') { loadMyEnrollments(); }
+      if (key === '报名审核') { loadPendingEnrollments(); }
       if (key === '学生签到') { loadPendingSessions(); loadMyAttendance(); }
       if (key === '用户管理') loadUsers();
       if (key === '日志管理') { loadLogs(); loadLogSummary(); }
@@ -1398,6 +1485,8 @@ const app = createApp({
     const sessions = ref([]); const attRecords = ref([]); const attSessionName = ref('');
     const pendingSessions = ref([]);
     const checkinLoading = ref(false); const checkinTarget = ref(null); const myAttendance = ref([]);
+    // 项目报名
+    const availableProjects = ref([]); const myEnrollments = ref([]); const enrollLoading = ref(false);
     function loadSessions() { api.get('/sessions').then(r => sessions.value = r.sort((a,b) => (b.场次ID||0) - (a.场次ID||0))); }
     function loadPendingSessions() { api.get('/my_pending_sessions').then(r => pendingSessions.value = r); }
     async function viewAttendance(row) {
@@ -1415,6 +1504,56 @@ const app = createApp({
     }
     async function loadMyAttendance() {
       try { myAttendance.value = await api.get('/my_attendance'); } catch(e) {}
+    }
+
+    // ===== 项目报名 =====
+    async function loadMyEnrollments() {
+      try {
+        const res = await api.get('/my-enrollments');
+        availableProjects.value = res.available_projects || [];
+        myEnrollments.value = res.my_enrollments || [];
+      } catch(e) { ElMessage.error('加载报名数据失败'); }
+    }
+    async function doEnroll(row) {
+      if (row.已报名人数 >= row.人数上限) {
+        ElMessage.warning('该项目人数已满，无法报名'); return;
+      }
+      enrollLoading.value = true;
+      try {
+        await api.post('/my-enrollments', {项目ID: row.项目ID});
+        ElMessage.success('报名申请已提交，等待教师审核');
+        loadMyEnrollments();
+      } catch(e) {}
+      enrollLoading.value = false;
+    }
+
+    // ===== 报名审核（教师+管理员）=====
+    const pendingEnrollments = ref([]);
+    const auditLoading = ref(null);
+    async function loadPendingEnrollments() {
+      try {
+        pendingEnrollments.value = await api.get('/enrollments/pending');
+      } catch(e) { ElMessage.error('加载待审核列表失败'); }
+    }
+    async function approveEnrollment(row) {
+      auditLoading.value = row.报名ID;
+      try {
+        await api.put(`/enrollments/${row.报名ID}/approve`);
+        ElMessage.success(`已通过 ${row.学生姓名} 的报名申请`);
+        loadPendingEnrollments();
+      } catch(e) {}
+      auditLoading.value = null;
+    }
+    async function rejectEnrollment(row) {
+      const reason = prompt('请输入拒绝原因（可选）：');
+      if (reason === null) { auditLoading.value = null; return; } // 用户取消
+      auditLoading.value = row.报名ID;
+      try {
+        await api.put(`/enrollments/${row.报名ID}/reject`, {原因: reason || ''});
+        ElMessage.warning(`已拒绝 ${row.学生姓名} 的报名申请`);
+        loadPendingEnrollments();
+      } catch(e) {}
+      auditLoading.value = null;
     }
 
     // 通用表格排序 — 按数值从大到小
@@ -1446,7 +1585,7 @@ const app = createApp({
     // ===== 考勤发布 =====
     const myProjects = ref([]);
     const publishDlg = ref({show:false, isNew:true, form:{}});
-    function loadMyProjects() { api.get('/projects').then(r => myProjects.value = r.filter(p=>p.负责教师ID===me.value.用户ID)); }
+    function loadMyProjects() { api.get('/projects').then(r => myProjects.value = r.filter(p => p.项目状态 !== '已结束')); }
     function openPublishDlg(row) {
       publishDlg.value.isNew = !row;
       publishDlg.value.form = row ? {...row} : {项目ID:null, 场次日期:'', 开始时间:'08:00:00', 结束时间:'11:30:00', 地点:'', 带队教师ID:me.value.用户ID};
@@ -1566,6 +1705,8 @@ const app = createApp({
       equipment,equipDlg,openEquipDlg,saveEquip,delEquip,loadEquipment,loadLowStock,
       sessions,attRecords,attSessionName,pendingSessions,checkinLoading,checkinTarget,myAttendance,loadSessions,loadPendingSessions,viewAttendance,quickCheckin,loadMyAttendance,onSort,delSession,
       myProjects,publishDlg,openPublishDlg,savePublish,loadMyProjects,
+      availableProjects,myEnrollments,enrollLoading,loadMyEnrollments,doEnroll,
+      pendingEnrollments,auditLoading,loadPendingEnrollments,approveEnrollment,rejectEnrollment,
       myBorrows,borrowDlg,maxBorrowQty,loadMyBorrows,openBorrowDlg,saveBorrow,approveBorrow,returnBorrow,
       users,userDlg,openUserDlg,saveUser,delUser,loadUsers,canDeleteUser,restoreUser,
       logs,logFilter,logDlg,loadLogs,delLog,delLogBatch,openLogDlg,saveLog,loadLogSummary,
