@@ -332,7 +332,10 @@ def dashboard_stats(db: Session = Depends(get_db)):
 
 @app.get("/api/dashboard/logs", tags=["仪表盘"])
 def dashboard_logs(db: Session = Depends(get_db)):
-    logs = db.query(操作日志表).order_by(desc(操作日志表.操作时间)).limit(8).all()
+    # 仪表盘不展示敏感操作（密码相关），避免教师端看到管理员重置密码等记录
+    logs = db.query(操作日志表).filter(
+        操作日志表.描述.notlike("%密码%")
+    ).order_by(desc(操作日志表.操作时间)).limit(8).all()
     return [{
         "日志ID": l.日志ID,
         "描述": l.描述,
@@ -1216,7 +1219,8 @@ def create_session(data: dict = Body(...), user=Depends(auth_required), db: Sess
         创建时间=datetime.now()
     )
     db.add(s); db.commit(); db.refresh(s)
-    log = 操作日志表(用户ID=user.用户ID, 模块="考勤", 操作类型="新增", 目标类型="考勤场次表", 目标ID=s.场次ID, 描述=f"发布考勤场次（{s.场次日期}）", 操作时间=datetime.now())
+    项目名 = db.query(实训项目表).filter(实训项目表.项目ID == s.项目ID).first()
+    log = 操作日志表(用户ID=user.用户ID, 模块="考勤", 操作类型="新增", 目标类型="考勤场次表", 目标ID=s.场次ID, 描述=f"{user.真实姓名} 发布了考勤场次（{项目名.项目名称 if 项目名 else ''}，{s.场次日期} {s.开始时间}~{s.结束时间}）", 操作时间=datetime.now())
     db.add(log); db.commit()
     return {"ok": True, "场次ID": s.场次ID}
 
