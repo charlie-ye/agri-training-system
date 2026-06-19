@@ -447,12 +447,41 @@ def create_user(data: dict = Body(...), user=Depends(auth_required), db: Session
 def update_user(uid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     u = db.query(用户表).filter(用户表.用户ID == uid).first()
     if not u: raise HTTPException(404, "用户不存在")
+    # 记录旧值用于日志
+    旧值 = {k: getattr(u, k) for k in ["用户名", "真实姓名", "学号工号", "角色ID", "手机号", "邮箱", "是否启用"]}
+    变更列表 = []
+    字段显示名 = {"用户名": "账号", "真实姓名": "姓名", "学号工号": "学工号",
+                   "角色ID": "角色", "手机号": "手机号", "邮箱": "邮箱", "是否启用": "启用状态"}
     for k in ["用户名", "真实姓名", "学号工号", "角色ID", "手机号", "邮箱", "是否启用"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            # 角色ID特殊处理：显示角色名称
+            if k == "角色ID":
+                旧角色 = db.query(角色表).filter(角色表.角色ID == int(旧)).first() if 旧 else None
+                新角色 = db.query(角色表).filter(角色表.角色ID == int(新)).first() if 新 else None
+                旧 = 旧角色.角色名称 if 旧角色 else old_val
+                新 = 新角色.角色名称 if 新角色 else 新
+            # 是否启用特殊处理
+            if k == "是否启用":
+                旧 = "启用" if str(旧) == "1" else "禁用"
+                新 = "启用" if str(新) == "1" else "禁用"
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(u, k, data[k])
     if data.get("密码"):
         u.密码哈希 = sha256(data["密码"])
+        变更列表.append("密码: 已修改（不记录明文）")
     db.commit()
+    # 写详细操作日志
+    if 变更列表:
+        变更详情 = "；".join(变更列表)
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="用户", 操作类型="修改",
+            目标类型="用户表", 目标ID=u.用户ID,
+            描述=f"{user.真实姓名} 编辑了用户「{u.真实姓名}」（账号：{u.用户名}）：{变更详情}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/users/{uid}", tags=["用户管理"])
