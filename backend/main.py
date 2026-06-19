@@ -747,8 +747,12 @@ def delete_batch(bid: int, user=Depends(auth_required), db: Session = Depends(ge
 
 # ==================== 项目管理 ====================
 @app.get("/api/projects", tags=["项目管理"])
-def list_projects(db: Session = Depends(get_db)):
-    projects = db.query(实训项目表).order_by(desc(实训项目表.项目ID)).all()
+def list_projects(user=Depends(auth_required), db: Session = Depends(get_db)):
+    # 管理员看全部，教师只看自己负责的项目
+    q = db.query(实训项目表)
+    if user.角色ID == 2:  # 教师
+        q = q.filter(实训项目表.负责教师ID == user.用户ID)
+    projects = q.order_by(desc(实训项目表.项目ID)).all()
     return [{
         "项目ID": p.项目ID, "项目名称": p.项目名称, "项目描述": p.项目描述,
         "场地ID": p.场地ID, "学期ID": p.学期ID,
@@ -1185,8 +1189,16 @@ def return_borrow(bid: int, user=Depends(auth_required), db: Session = Depends(g
 
 # ==================== 考勤管理 ====================
 @app.get("/api/sessions", tags=["考勤管理"])
-def list_sessions(db: Session = Depends(get_db)):
-    sessions = db.query(考勤场次表).order_by(desc(考勤场次表.场次日期)).all()
+def list_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
+    # 管理员看全部，教师只看自己负责项目的考勤场次
+    q = db.query(考勤场次表)
+    if user.角色ID == 2:  # 教师
+        my_project_ids = db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()
+        my_pids = [p[0] for p in my_project_ids]
+        if not my_pids:
+            return []
+        q = q.filter(考勤场次表.项目ID.in_(my_pids))
+    sessions = q.order_by(desc(考勤场次表.场次日期)).all()
     return [{
         "场次ID": s.场次ID, "项目ID": s.项目ID, "场次日期": str(s.场次日期) if s.场次日期 else "",
         "开始时间": str(s.开始时间) if s.开始时间 else "",
