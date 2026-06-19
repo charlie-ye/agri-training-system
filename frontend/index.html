@@ -686,6 +686,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <div class="num" style="color:#e6a23c;font-size:28px;">{{ logSummary.今日修改||0 }}</div>
               <div class="label">今日修改</div>
             </div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#f4f4f5;border-left:3px solid #909399;" v-if="(logSummary.今日其他||0) > 0">
+              <div class="num" style="color:#909399;font-size:28px;">{{ logSummary.今日其他||0 }}</div>
+              <div class="label">今日其他</div>
+            </div>
           </div>
           <!-- 模块统计 + 活跃用户 -->
           <div style="display:flex;gap:12px;margin-bottom:16px;" v-if="logSummary.模块统计">

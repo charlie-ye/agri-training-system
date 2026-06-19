@@ -1215,18 +1215,25 @@ def delete_logs_batch(模块: str = None, user=Depends(auth_required), db: Sessi
 
 @app.get("/api/logs/summary", tags=["日志管理"])
 def logs_summary(db: Session = Depends(get_db)):
-    """日志摘要：今日操作统计 + 各模块操作件数 + 各用户活跃度"""
+    """日志摘要：今日操作统计 + 各模块今日操作件数 + 各用户活跃度"""
     today = datetime.now().date()
-    today_logs = db.query(操作日志表).filter(func.date(操作日志表.操作时间) == today)
-    今日新增 = today_logs.filter(操作日志表.操作类型 == "新增").count()
-    今日删除 = today_logs.filter(操作日志表.操作类型 == "删除").count()
-    今日修改 = today_logs.filter(操作日志表.操作类型 == "修改").count()
-    今日操作总数 = 今日新增 + 今日删除 + 今日修改
-    # 按模块统计
-    module_counts = db.query(操作日志表.模块, func.count(操作日志表.日志ID)).group_by(操作日志表.模块).all()
+    # 今日全部日志（用于计算总数）
+    today_all = db.query(操作日志表).filter(func.date(操作日志表.操作时间) == today)
+    # 按操作类型分类统计（覆盖所有类型，不限于新增/删除/修改）
+    type_rows = today_all.with_entities(操作日志表.操作类型, func.count(操作日志表.日志ID)).group_by(操作日志表.操作类型).all()
+    type_map = {t: c for t, c in type_rows}
+    今日新增 = type_map.get("新增", 0)
+    今日删除 = type_map.get("删除", 0)
+    今日修改 = type_map.get("修改", 0)
+    其他操作 = sum(c for t, c in type_rows if t not in ("新增", "删除", "修改"))
+    今日操作总数 = today_all.count() or 0  # 所有类型的总数
+    # 按模块统计（仅限今天）
+    module_counts = today_all.with_entities(
+        操作日志表.模块, func.count(操作日志表.日志ID)
+    ).group_by(操作日志表.模块).all()
     模块统计 = [{"模块": m, "数量": c} for m, c in module_counts if c > 0]
-    # 最近12条详细日志
-    recent = db.query(操作日志表).order_by(desc(操作日志表.操作时间)).limit(12).all()
+    # 最近12条详细日志（仅限今天的，和统计口径一致）
+    recent = today_all.order_by(desc(操作日志表.操作时间)).limit(12).all()
     最近日志 = [{
         "日志ID": l.日志ID, "模块": l.模块, "操作类型": l.操作类型,
         "描述": l.描述, "操作时间": str(l.操作时间)[:16] if l.操作时间 else "",
@@ -1234,8 +1241,8 @@ def logs_summary(db: Session = Depends(get_db)):
         "目标类型": l.目标类型, "用户ID": l.用户ID
     } for l in recent]
     # 今日用户活跃排行
-    user_act = db.query(操作日志表.用户ID, func.count(操作日志表.日志ID)).filter(
-        func.date(操作日志表.操作时间) == today
+    user_act = today_all.with_entities(
+        操作日志表.用户ID, func.count(操作日志表.日志ID)
     ).group_by(操作日志表.用户ID).order_by(desc(func.count(操作日志表.日志ID))).limit(5).all()
     活跃用户 = [{
         "用户姓名": db.query(用户表).filter(用户表.用户ID == uid).first().真实姓名 if uid else "系统",
@@ -1243,6 +1250,7 @@ def logs_summary(db: Session = Depends(get_db)):
     } for uid, cnt in user_act]
     return {
         "今日新增": 今日新增, "今日删除": 今日删除, "今日修改": 今日修改,
+        "今日其他": 其他操作,
         "今日操作总数": 今日操作总数,
         "模块统计": 模块统计, "最近日志": 最近日志,
         "活跃用户": 活跃用户
