@@ -155,22 +155,26 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
             </div>
           </div>
           <!-- 今日操作摘要 -->
-          <div style="display:flex;gap:12px;margin-bottom:16px;" v-if="logSummary.最近日志">
-            <div class="stat-card" style="flex:1;min-width:100px;background:#f0f9eb;border-left:3px solid #67c23a;">
-              <div class="num" style="color:#67c23a;">{{ logSummary.今日新增 }}</div>
+          <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;" v-if="logSummary.最近日志">
+            <div class="stat-card" style="flex:1;min-width:90px;background:#f0f9eb;border-left:3px solid #67c23a;">
+              <div class="num" style="color:#67c23a;font-size:28px;">{{ logSummary.今日新增||0 }}</div>
               <div class="label">今日新增</div>
             </div>
-            <div class="stat-card" style="flex:1;min-width:100px;background:#fff5f5;border-left:3px solid #f56c6c;">
-              <div class="num" style="color:#f56c6c;">{{ logSummary.今日删除 }}</div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#fff5f5;border-left:3px solid #f56c6c;">
+              <div class="num" style="color:#f56c6c;font-size:28px;">{{ logSummary.今日删除||0 }}</div>
               <div class="label">今日删除</div>
             </div>
-            <div class="stat-card" style="flex:1;min-width:100px;background:#fdf6ec;border-left:3px solid #e6a23c;">
-              <div class="num" style="color:#e6a23c;">{{ logSummary.今日修改 }}</div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#fdf6ec;border-left:3px solid #e6a23c;">
+              <div class="num" style="color:#e6a23c;font-size:28px;">{{ logSummary.今日修改||0 }}</div>
               <div class="label">今日修改</div>
             </div>
-            <div class="stat-card" style="flex:1;min-width:100px;background:#ecf5ff;border-left:3px solid #409eff;">
-              <div class="num" style="color:#409eff;">{{ dashStats.find(s=>s.label==='日志数')?.value || 0 }}</div>
-              <div class="label">总日志数</div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#f4f4f5;border-left:3px solid #909399;" v-if="(logSummary.今日其他||0)>0">
+              <div class="num" style="color:#909399;font-size:28px;">{{ logSummary.今日其他||0 }}</div>
+              <div class="label">今日其他</div>
+            </div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#ecf5ff;border-left:3px solid #409eff;">
+              <div class="num" style="color:#409eff;font-size:28px;">{{ logSummary.今日操作总数||0 }}</div>
+              <div class="label">今日总操作</div>
             </div>
           </div>
           <!-- 图表行1：角色饼图 + 器材库存柱状图 -->
