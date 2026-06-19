@@ -575,10 +575,25 @@ def create_venue(data: dict = Body(...), user=Depends(auth_required), db: Sessio
 def update_venue(vid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     v = db.query(实训场地表).filter(实训场地表.场地ID == vid).first()
     if not v: raise HTTPException(404, "场地不存在")
+    旧值 = {k: getattr(v, k) for k in ["场地编号", "场地名称", "类型ID", "面积平米", "主要用途", "使用状态", "责任人", "备注"]}
+    变更列表 = []
+    字段显示名 = {"场地编号": "编号", "场地名称": "名称", "类型ID": "类型",
+                   "面积平米": "面积", "主要用途": "用途", "使用状态": "状态", "责任人": "责任人", "备注": "备注"}
     for k in ["场地编号", "场地名称", "类型ID", "面积平米", "主要用途", "使用状态", "责任人", "备注"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(v, k, data[k])
     db.commit()
+    if 变更列表:
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="场地", 操作类型="修改",
+            目标类型="实训场地表", 目标ID=vid,
+            描述=f"{user.真实姓名} 编辑了场地「{v.场地名称}」：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/venues/{vid}", tags=["场地管理"])
@@ -622,10 +637,25 @@ def create_crop(data: dict = Body(...), user=Depends(auth_required), db: Session
 def update_crop(cid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     c = db.query(作物品种表).filter(作物品种表.品种ID == cid).first()
     if not c: raise HTTPException(404, "作物不存在")
+    旧值 = {k: getattr(c, k) for k in ["品种名称", "科属", "培育周期", "温湿范围", "描述"]}
+    变更列表 = []
+    字段显示名 = {"品种名称": "名称", "科属": "科属", "培育周期": "周期",
+                   "温湿范围": "温湿范围", "描述": "描述"}
     for k in ["品种名称", "科属", "培育周期", "温湿范围", "描述"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(c, k, data[k])
     db.commit()
+    if 变更列表:
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="作物", 操作类型="修改",
+            目标类型="作物品种表", 目标ID=cid,
+            描述=f"{user.真实姓名} 编辑了作物「{c.品种名称}」：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/crops/{cid}", tags=["作物管理"])
@@ -669,10 +699,40 @@ def create_batch(data: dict = Body(...), user=Depends(auth_required), db: Sessio
 def update_batch(bid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     b = db.query(培育批次表).filter(培育批次表.批次ID == bid).first()
     if not b: raise HTTPException(404, "批次不存在")
+    旧值 = {k: getattr(b, k) for k in ["批次名称", "品种ID", "场地ID", "种植日期", "数量", "生长状态", "存活率"]}
+    变更列表 = []
+    字段显示名 = {"批次名称": "名称", "品种ID": "品种", "场地ID": "场地",
+                   "种植日期": "种植日期", "数量": "数量", "生长状态": "生长状态", "存活率": "存活率"}
     for k in ["批次名称", "品种ID", "场地ID", "种植日期", "数量", "生长状态", "存活率"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            # 品种ID/场地ID特殊处理：显示名称
+            if k == "品种ID":
+                try:
+                    旧作物 = db.query(作物品种表).filter(作物品种表.品种ID == int(旧)).first()
+                    新作物 = db.query(作物品种表).filter(作物品种表.品种ID == int(新)).first()
+                    旧 = 旧作物.品种名称 if 旧作物 else old_val
+                    新 = 新作物.品种名称 if 新作物 else new_val
+                except: pass
+            elif k == "场地ID":
+                try:
+                    旧场地 = db.query(实训场地表).filter(实训场地表.场地ID == int(旧)).first()
+                    新场地 = db.query(实训场地表).filter(实训场地表.场地ID == int(新)).first()
+                    旧 = 旧场地.场地名称 if 旧场地 else old_val
+                    新 = 新场地.场地名称 if 新场地 else new_val
+                except: pass
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(b, k, data[k])
     db.commit()
+    if 变更列表:
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="作物", 操作类型="修改",
+            目标类型="培育批次表", 目标ID=bid,
+            描述=f"{user.真实姓名} 编辑了培育批次「{b.批次名称}」：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/batches/{bid}", tags=["作物管理"])
@@ -718,11 +778,39 @@ def create_project(data: dict = Body(...), user=Depends(auth_required), db: Sess
 def update_project(pid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     p = db.query(实训项目表).filter(实训项目表.项目ID == pid).first()
     if not p: raise HTTPException(404, "项目不存在")
+    旧值 = {k: getattr(p, k) for k in ["项目名称", "项目描述", "场地ID", "学期ID", "负责教师ID", "开始日期", "结束日期", "人数上限", "项目状态"]}
+    变更列表 = []
+    字段显示名 = {"项目名称": "名称", "项目描述": "描述", "场地ID": "场地",
+                   "学期ID": "学期", "负责教师ID": "负责教师",
+                   "开始日期": "开始日期", "结束日期": "结束日期",
+                   "人数上限": "人数上限", "项目状态": "状态"}
     for k in ["项目名称", "项目描述", "场地ID", "学期ID", "负责教师ID", "开始日期", "结束日期", "人数上限", "项目状态"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            if k == "场地ID":
+                try:
+                    旧场地 = db.query(实训场地表).filter(实训场地表.场地ID == int(旧)).first()
+                    新场地 = db.query(实训场地表).filter(实训场地表.场地ID == int(新)).first()
+                    旧 = 旧场地.场地名称 if 旧场地 else old_val
+                    新 = 新场地.场地名称 if 新场地 else new_val
+                except: pass
+            elif k == "负责教师ID":
+                try:
+                    旧教师 = db.query(用户表).filter(用户表.用户ID == int(旧)).first()
+                    新教师 = db.query(用户表).filter(用户表.用户ID == int(新)).first()
+                    旧 = 旧教师.真实姓名 if 旧教师 else old_val
+                    新 = 新教师.真实姓名 if 新教师 else new_val
+                except: pass
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(p, k, data[k])
     db.commit()
-    log = 操作日志表(用户ID=user.用户ID, 模块="项目", 操作类型="修改", 目标类型="实训项目表", 目标ID=pid, 描述=f"{user.真实姓名} 修改了项目「{p.项目名称}」", 操作时间=datetime.now())
+    log = 操作日志表(
+        用户ID=user.用户ID, 模块="项目", 操作类型="修改",
+        目标类型="实训项目表", 目标ID=pid,
+        描述=f"{user.真实姓名} 编辑了项目「{p.项目名称}」：{'；'.join(变更列表) if 变更列表 else '无字段变更'}",
+        操作时间=datetime.now()
+    )
     db.add(log); db.commit()
     return {"ok": True}
 
@@ -758,9 +846,28 @@ def list_enrollments(项目ID: int = None, db: Session = Depends(get_db)):
 def update_enrollment(eid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     e = db.query(学生报名表).filter(学生报名表.报名ID == eid).first()
     if not e: raise HTTPException(404, "报名记录不存在")
-    if "报名状态" in data: e.报名状态 = data["报名状态"]
-    if "综合成绩" in data: e.综合成绩 = data["综合成绩"]
+    变更列表 = []
+    if "报名状态" in data and data["报名状态"] != e.报名状态:
+        旧状态 = e.报名状态
+        新状态 = data["报名状态"]
+        e.报名状态 = 新状态
+        变更列表.append(f"报名状态: {旧状态} → {新状态}")
+    if "综合成绩" in data:
+        旧成绩 = str(e.综合成绩) if e.综合成绩 else "(未评分)"
+        新成绩 = str(data["综合成绩"])
+        e.综合成绩 = data["综合成绩"]
+        变更列表.append(f"综合成绩: {旧成绩} → {新成绩}")
     db.commit()
+    if 变更列表:
+        学生姓名 = db.query(用户表).filter(用户表.用户ID == e.学生ID).first().真实姓名 or str(e.学生ID)
+        项目名称 = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first().项目名称 or str(e.项目ID)
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="项目", 操作类型="修改",
+            目标类型="学生报名表", 目标ID=eid,
+            描述=f"{user.真实姓名} 审核了学生「{学生姓名}」的「{项目名称}」报名：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 # ==================== 学生项目报名 ====================
@@ -957,11 +1064,31 @@ def create_equipment(data: dict = Body(...), user=Depends(auth_required), db: Se
 def update_equipment(eid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     e = db.query(器材档案表).filter(器材档案表.器材ID == eid).first()
     if not e: raise HTTPException(404, "器材不存在")
+    旧值 = {k: getattr(e, k) for k in ["器材编号", "器材名称", "分类ID", "规格型号", "单位", "当前库存", "最低库存", "单价", "存放位置"]}
+    变更列表 = []
+    字段显示名 = {"器材编号": "编号", "器材名称": "名称", "分类ID": "分类",
+                   "规格型号": "规格", "单位": "单位", "当前库存": "库存",
+                   "最低库存": "最低库存", "单价": "单价", "存放位置": "存放位置"}
     for k in ["器材编号", "器材名称", "分类ID", "规格型号", "单位", "当前库存", "最低库存", "单价", "存放位置"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            if k == "分类ID":
+                try:
+                    旧分类 = db.query(器材分类表).filter(器材分类表.分类ID == int(旧)).first()
+                    新分类 = db.query(器材分类表).filter(器材分类表.分类ID == int(新)).first()
+                    旧 = 旧分类.分类名称 if 旧分类 else old_val
+                    新 = 新分类.分类名称 if 新分类 else new_val
+                except: pass
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(e, k, data[k])
     db.commit()
-    log = 操作日志表(用户ID=user.用户ID, 模块="器材", 操作类型="修改", 目标类型="器材档案表", 目标ID=eid, 描述=f"{user.真实姓名} 修改了器材「{e.器材名称}」信息", 操作时间=datetime.now())
+    log = 操作日志表(
+        用户ID=user.用户ID, 模块="器材", 操作类型="修改",
+        目标类型="器材档案表", 目标ID=eid,
+        描述=f"{user.真实姓名} 编辑了器材「{e.器材名称}」：{'；'.join(变更列表) if 变更列表 else '无字段变更'}",
+        操作时间=datetime.now()
+    )
     db.add(log); db.commit()
     return {"ok": True}
 
@@ -1085,10 +1212,32 @@ def create_session(data: dict = Body(...), user=Depends(auth_required), db: Sess
 def update_session(sid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     s = db.query(考勤场次表).filter(考勤场次表.场次ID == sid).first()
     if not s: raise HTTPException(404, "场次不存在")
+    旧值 = {k: getattr(s, k) for k in ["场次日期", "开始时间", "结束时间", "地点", "带队教师ID"]}
+    变更列表 = []
+    字段显示名 = {"场次日期": "日期", "开始时间": "开始时间", "结束时间": "结束时间",
+                   "地点": "地点", "带队教师ID": "带队教师"}
     for k in ["场次日期", "开始时间", "结束时间", "地点", "带队教师ID"]:
-        if k in data and data[k] is not None:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            if k == "带队教师ID":
+                try:
+                    旧教师 = db.query(用户表).filter(用户表.用户ID == int(旧)).first()
+                    新教师 = db.query(用户表).filter(用户表.用户ID == int(新)).first()
+                    旧 = 旧教师.真实姓名 if 旧教师 else old_val
+                    新 = 新教师.真实姓名 if 新教师 else new_val
+                except: pass
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(s, k, data[k])
     db.commit()
+    if 变更列表:
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="考勤", 操作类型="修改",
+            目标类型="考勤场次表", 目标ID=sid,
+            描述=f"{user.真实姓名} 编辑了考勤场次（{s.场次日期}）：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
     return {"ok": True}
 
 @app.delete("/api/sessions/{sid}", tags=["考勤管理"])
