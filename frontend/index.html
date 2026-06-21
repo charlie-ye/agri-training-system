@@ -12,21 +12,21 @@
 <script src="https://unpkg.com/@element-plus/icons-vue/dist/index.iife.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7f0; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f7fa; }
 #app { min-height: 100vh; }
 .login-bg {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #1b5e20 0%, #388e3c 30%, #66bb6a 70%, #a5d6a7 100%);
+  background: linear-gradient(135deg, #27a6cc 0%, #80bfd4 50%, #fcc5c5 100%);
 }
 .login-card {
   background: #fff; border-radius: 12px; padding: 40px 36px; width: 440px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
-.login-card h2 { text-align: center; margin-bottom: 30px; color: #2e7d32; font-size: 22px; }
+.login-card h2 { text-align: center; margin-bottom: 30px; color: #27a6cc; font-size: 22px; }
 .login-card .el-button { width: 100%; margin-top: 10px; height: 42px; font-size: 16px; }
 
 .header {
-  background: linear-gradient(90deg, #1b5e20, #43a047); color: #fff;
+  background: linear-gradient(90deg, #27a6cc, #80bfd4); color: #fff;
   padding: 0 24px; height: 60px; display: flex; align-items: center;
   justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
@@ -35,12 +35,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 .header-right .el-button { color: #fff; border-color: rgba(255,255,255,0.5); }
 
 .sidebar {
-  width: 220px; min-height: calc(100vh - 60px); background: #1b3a1b;
+  width: 220px; min-height: calc(100vh - 60px); background: #0d3d4a;
   transition: width 0.3s; overflow-y: auto;
 }
 .sidebar .el-menu { border-right: none; }
 .sidebar .el-menu-item { height: 50px; line-height: 50px; font-size: 14px; }
-.sidebar .el-menu-item.is-active { background: #2e5e2e !important; color: #a5d6a7 !important; }
+.sidebar .el-menu-item.is-active { background: #0a2d3a !important; color: #80bfd4 !important; }
 
 .main-wrap { display: flex; flex: 1; }
 .content { flex: 1; padding: 20px; overflow-y: auto; }
@@ -51,15 +51,15 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: transform 0.2s;
 }
 .stat-card:hover { transform: translateY(-3px); }
-.stat-card .num { font-size: 32px; font-weight: bold; color: #4caf50; }
+.stat-card .num { font-size: 32px; font-weight: bold; color: #27a6cc; }
 .stat-card .label { font-size: 13px; color: #909399; margin-top: 6px; }
 
 .panel { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-.panel h3 { font-size: 16px; color: #303133; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #c8e6c9; }
+.panel h3 { font-size: 16px; color: #303133; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #80bfd4; }
 
 .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
 .el-table { font-size: 13px; }
-.el-table th { background: #e8f5e9 !important; color: #2e7d32 !important; }
+.el-table th { background: #d4edf5 !important; color: #27a6cc !important; }
 
 .el-dialog__body { max-height: 60vh; overflow-y: auto; }
 </style>
@@ -97,10 +97,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           <div style="font-size:11px;color:#c0c4cc;">密码 123</div>
         </div>
         <div class="demo-role student" @click="loginForm={用户名:'s001',密码:'123'}"
-          style="flex:1;background:#f0f9eb;border:2px solid #e1f3d8;border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s;"
-          onmouseover="this.style.borderColor='#67c23a';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(103,194,58,0.2)'"
-          onmouseout="this.style.borderColor='#e1f3d8';this.style.transform='';this.style.boxShadow=''">
-          <div style="font-size:11px;color:#67c23a;margin-bottom:4px;">🎓 学生</div>
+          style="flex:1;background:#e8f4f8;border:2px solid #80bfd4;border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s;"
+          onmouseover="this.style.borderColor='#27a6cc';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(39,166,204,0.2)'"
+          onmouseout="this.style.borderColor='#80bfd4';this.style.transform='';this.style.boxShadow=''">
+          <div style="font-size:11px;color:#27a6cc;margin-bottom:4px;">🎓 学生</div>
           <div style="font-weight:600;font-size:13px;color:#303133;">s001</div>
           <div style="font-size:11px;color:#c0c4cc;">密码 123</div>
         </div>
@@ -125,7 +125,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 
     <div class="main-wrap">
       <div class="sidebar">
-        <el-menu :default-active="page" @select="onMenu" background-color="#1b3a1b" text-color="#a5d6a7" active-text-color="#66bb6a">
+        <el-menu :default-active="page" @select="onMenu" background-color="#0d3d4a" text-color="#7ec8d8" active-text-color="#80bfd4">
           <el-menu-item index="仪表盘"><el-icon><location /></el-icon>仪表盘</el-menu-item>
           <el-menu-item index="场地管理" v-if="me.角色名称!=='学生'"><el-icon><office-building /></el-icon>场地管理</el-menu-item>
           <el-menu-item index="作物管理"><el-icon><sunny /></el-icon>作物管理</el-menu-item>
@@ -155,8 +155,8 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           </div>
           <!-- 今日操作摘要 -->
           <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;" v-if="logSummary.最近日志">
-            <div class="stat-card" style="flex:1;min-width:90px;background:#f0f9eb;border-left:3px solid #67c23a;">
-              <div class="num" style="color:#67c23a;font-size:28px;">{{ logSummary.今日新增||0 }}</div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#e8f4f8;border-left:3px solid #27a6cc;">
+              <div class="num" style="color:#27a6cc;font-size:28px;">{{ logSummary.今日新增||0 }}</div>
               <div class="label">今日新增</div>
             </div>
             <div class="stat-card" style="flex:1;min-width:90px;background:#fff5f5;border-left:3px solid #f56c6c;">
@@ -673,8 +673,8 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
         <div v-if="page==='日志管理'">
           <!-- 今日操作统计 -->
           <div style="display:flex;gap:12px;margin-bottom:16px;">
-            <div class="stat-card" style="flex:1;min-width:90px;background:#f0f9eb;border-left:3px solid #67c23a;">
-              <div class="num" style="color:#67c23a;font-size:28px;">{{ logSummary.今日操作总数||0 }}</div>
+            <div class="stat-card" style="flex:1;min-width:90px;background:#e8f4f8;border-left:3px solid #27a6cc;">
+              <div class="num" style="color:#27a6cc;font-size:28px;">{{ logSummary.今日操作总数||0 }}</div>
               <div class="label">今日总操作</div>
             </div>
             <div class="stat-card" style="flex:1;min-width:90px;background:#ecf5ff;border-left:3px solid #409eff;">
@@ -1277,7 +1277,7 @@ const app = createApp({
       ElMessage.info('已退出，请重新登录');
     }
     function roleColor(roleName) {
-      const map = {'管理员':'#f56c6c', '教师':'#e6a23c', '学生':'#67c23a'};
+      const map = {'管理员':'#f56c6c', '教师':'#e6a23c', '学生':'#27a6cc'};
       return map[roleName] || '#909399';
     }
 
@@ -1700,7 +1700,7 @@ const app = createApp({
         backendMsg.value = '❌ 后端未启动 — 请在 backend 目录执行 python main.py 启动后端';
       }
       const el = document.getElementById('backend-status');
-      if (el) { el.textContent = backendMsg.value; el.style.color = backendOnline.value ? '#67c23a' : '#e6a23c'; }
+      if (el) { el.textContent = backendMsg.value; el.style.color = backendOnline.value ? '#27a6cc' : '#e6a23c'; }
     })();
 
     return {
