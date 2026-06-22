@@ -210,6 +210,18 @@ class 签到记录表(Base):
     签到时间 = Column(DateTime)
     签到状态 = Column(String(20), default="缺勤")
 
+# 病虫害防治表 — 对齐 agri_base.sql line 140-150
+class 病虫害防治表(Base):
+    __tablename__ = "病虫害防治表"
+    防治ID = Column(BigInteger, primary_key=True)
+    批次ID = Column(BigInteger, nullable=False)
+    发现日期 = Column(Date, nullable=False)
+    病虫害类型 = Column(String(100))
+    严重程度 = Column(String(20))
+    防治措施 = Column(Text)
+    防治结果 = Column(String(100))
+    记录人ID = Column(BigInteger)
+
 # 操作日志表 — 对齐 agri_base.sql line 57-70
 class 操作日志表(Base):
     __tablename__ = "操作日志表"
@@ -328,6 +340,7 @@ def dashboard_stats(db: Session = Depends(get_db)):
         "预约数": db.query(func.count(场地预约表.预约ID)).scalar() or 0,
         "考勤场次": db.query(func.count(考勤场次表.场次ID)).scalar() or 0,
         "日志数": db.query(func.count(操作日志表.日志ID)).scalar() or 0,
+        "防治数": db.query(func.count(病虫害防治表.防治ID)).scalar() or 0,
     }
 
 @app.get("/api/dashboard/logs", tags=["仪表盘"])
@@ -407,11 +420,19 @@ def dashboard_charts(db: Session = Depends(get_db)):
         rate = round(attended / enrolled * 100, 1) if enrolled > 0 else 0
         项目签到率.append({"项目名称": p.项目名称[:8], "应到": enrolled, "实到": attended, "签到率": rate})
 
+    # 9. 病虫害严重程度分布（饼图）
+    pest_stats = db.query(病虫害防治表.严重程度, sf.count(病虫害防治表.防治ID)).group_by(病虫害防治表.严重程度).all()
+    防治严重程度 = [{"程度": s, "次数": c} for s, c in pest_stats]
+    # 也按病虫害类型统计
+    pest_type_stats = db.query(病虫害防治表.病虫害类型, sf.count(病虫害防治表.防治ID)).group_by(病虫害防治表.病虫害类型).all()
+    防治类型分布 = [{"类型": t, "次数": c} for t, c in pest_type_stats]
+
     return {
         "角色分布": 角色分布, "器材库存": 器材库存,
         "项目状态": 项目状态, "考勤趋势": 考勤趋势,
         "场地使用": 场地使用, "借用趋势": 借用趋势,
-        "批次分布": 批次分布, "项目签到率": 项目签到率
+        "批次分布": 批次分布, "项目签到率": 项目签到率,
+        "防治严重程度": 防治严重程度, "防治类型分布": 防治类型分布
     }
 
 # ==================== 用户管理 ====================
@@ -1476,6 +1497,115 @@ def view_attendance_stats(db: Session = Depends(get_db)):
         rate = round(attended / enrolled * 100, 1) if enrolled > 0 else 0
         result.append({"项目名称": p.项目名称, "应到人数": enrolled, "实到人数": attended, "出勤率": f"{rate}%"})
     return result
+
+# ==================== 病虫害防治管理 ====================
+@app.get("/api/pest-controls", tags=["病虫害防治"])
+def list_pest_controls(批次ID: int = None, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """列出病虫害防治记录。所有人可见——按教师负责的场地项目和学生的报名项目来分"""
+    q = db.query(病虫害防治表)
+    # 学生只看自己报名项目的批次病虫害
+    if user.角色ID == 3:
+        # 学生报名通过的项目
+        enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
+        project_ids = [e.项目ID for e in enrolls]
+        if not project_ids:
+            return []
+        # 这些项目的批次ID
+        batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(
+            db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(project_ids))
+        )).all()
+        batch_ids = [b[0] for b in batches]
+        if not batch_ids:
+            return []
+        q = q.filter(病虫害防治表.批次ID.in_(batch_ids))
+    # 教师只看自己负责项目中涉及批次的病虫害
+    elif user.角色ID == 2:
+        my_project_ids = [p[0] for p in db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()]
+        if not my_project_ids:
+            return []
+        batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(
+            db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(my_project_ids))
+        )).all()
+        batch_ids = [b[0] for b in batches]
+        if not batch_ids:
+            return []
+        q = q.filter(病虫害防治表.批次ID.in_(batch_ids))
+    # 管理员看全部
+    if 批次ID:
+        q = q.filter(病虫害防治表.批次ID == 批次ID)
+    records = q.order_by(desc(病虫害防治表.防治ID)).all()
+    return [{
+        "防治ID": r.防治ID, "批次ID": r.批次ID,
+        "发现日期": str(r.发现日期) if r.发现日期 else "",
+        "病虫害类型": r.病虫害类型, "严重程度": r.严重程度,
+        "防治措施": r.防治措施, "防治结果": r.防治结果,
+        "记录人ID": r.记录人ID,
+        "批次名称": db.query(培育批次表).filter(培育批次表.批次ID == r.批次ID).first().批次名称 if r.批次ID else "",
+        "记录人姓名": db.query(用户表).filter(用户表.用户ID == r.记录人ID).first().真实姓名 if r.记录人ID else ""
+    } for r in records]
+
+@app.post("/api/pest-controls", tags=["病虫害防治"])
+def create_pest_control(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    """新增病虫害防治记录（所有人可用）"""
+    p = 病虫害防治表(
+        批次ID=data["批次ID"], 发现日期=data.get("发现日期", datetime.now().date()),
+        病虫害类型=data.get("病虫害类型", ""), 严重程度=data.get("严重程度", "轻度"),
+        防治措施=data.get("防治措施", ""), 防治结果=data.get("防治结果", "处理中"),
+        记录人ID=user.用户ID
+    )
+    db.add(p); db.commit(); db.refresh(p)
+    batch = db.query(培育批次表).filter(培育批次表.批次ID == p.批次ID).first()
+    batch_name = batch.批次名称 if batch else f"批次#{p.批次ID}"
+    log = 操作日志表(用户ID=user.用户ID, 模块="防治", 操作类型="新增", 目标类型="病虫害防治表", 目标ID=p.防治ID, 描述=f"{user.真实姓名} 记录了批次「{batch_name}」的病虫害：{p.病虫害类型}（{p.严重程度}）", 操作时间=datetime.now())
+    db.add(log); db.commit()
+    return {"ok": True, "防治ID": p.防治ID}
+
+@app.put("/api/pest-controls/{pid}", tags=["病虫害防治"])
+def update_pest_control(pid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    """编辑病虫害防治记录（所有人可编辑自己记录的，管理员可编辑全部）"""
+    p = db.query(病虫害防治表).filter(病虫害防治表.防治ID == pid).first()
+    if not p: raise HTTPException(404, "防治记录不存在")
+    if user.角色ID != 1 and p.记录人ID != user.用户ID:
+        raise HTTPException(403, "只能编辑自己创建的记录")
+    旧值 = {k: getattr(p, k) for k in ["批次ID", "发现日期", "病虫害类型", "严重程度", "防治措施", "防治结果"]}
+    变更列表 = []
+    字段显示名 = {"批次ID": "批次", "发现日期": "发现日期", "病虫害类型": "病虫害类型",
+                   "严重程度": "严重程度", "防治措施": "防治措施", "防治结果": "防治结果"}
+    for k in ["批次ID", "发现日期", "病虫害类型", "严重程度", "防治措施", "防治结果"]:
+        if k in data and data[k] is not None and data[k] != 旧值.get(k):
+            旧 = str(旧值.get(k)) or "(空)"
+            新 = str(data[k]) or "(空)"
+            if k == "批次ID":
+                try:
+                    旧批 = db.query(培育批次表).filter(培育批次表.批次ID == int(旧)).first()
+                    新批 = db.query(培育批次表).filter(培育批次表.批次ID == int(新)).first()
+                    旧 = 旧批.批次名称 if 旧批 else old_val
+                    新 = 新批.批次名称 if 新批 else new_val
+                except: pass
+            变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
+            setattr(p, k, data[k])
+    db.commit()
+    if 变更列表:
+        log = 操作日志表(
+            用户ID=user.用户ID, 模块="防治", 操作类型="修改",
+            目标类型="病虫害防治表", 目标ID=pid,
+            描述=f"{user.真实姓名} 编辑了防治记录（ID={pid}）：{'；'.join(变更列表)}",
+            操作时间=datetime.now()
+        )
+        db.add(log); db.commit()
+    return {"ok": True}
+
+@app.delete("/api/pest-controls/{pid}", tags=["病虫害防治"])
+def delete_pest_control(pid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """删除病虫害防治记录（管理员或记录人可删除）"""
+    p = db.query(病虫害防治表).filter(病虫害防治表.防治ID == pid).first()
+    if not p: raise HTTPException(404, "防治记录不存在")
+    if user.角色ID != 1 and p.记录人ID != user.用户ID:
+        raise HTTPException(403, "只能删除自己创建的记录")
+    db.delete(p); db.commit()
+    log = 操作日志表(用户ID=user.用户ID, 模块="防治", 操作类型="删除", 目标类型="病虫害防治表", 目标ID=pid, 描述=f"{user.真实姓名} 删除了一条病虫害防治记录（ID={pid}）", 操作时间=datetime.now())
+    db.add(log); db.commit()
+    return {"ok": True}
 
 # ==================== 前端静态文件 ====================
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")

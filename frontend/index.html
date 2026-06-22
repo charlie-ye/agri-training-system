@@ -129,6 +129,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           <el-menu-item index="仪表盘"><el-icon><location /></el-icon>仪表盘</el-menu-item>
           <el-menu-item index="场地管理" v-if="me.角色名称!=='学生'"><el-icon><office-building /></el-icon>场地管理</el-menu-item>
           <el-menu-item index="作物管理"><el-icon><sunny /></el-icon>作物管理</el-menu-item>
+          <el-menu-item index="病虫害防治"><el-icon><warning /></el-icon>病虫害防治</el-menu-item>
           <el-menu-item index="项目管理" v-if="me.角色名称!=='学生'"><el-icon><trophy /></el-icon>项目管理</el-menu-item>
           <el-menu-item index="器材管理" v-if="me.角色名称!=='学生'"><el-icon><box /></el-icon>器材管理</el-menu-item>
           <el-menu-item index="器材借用"><el-icon><box /></el-icon>器材借用</el-menu-item>
@@ -218,6 +219,17 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
             <div class="panel" style="flex:1;min-width:0;">
               <h3>✅ 项目出勤签到率</h3>
               <div id="chart-enroll-rate" style="width:100%;height:280px;"></div>
+            </div>
+          </div>
+          <!-- 图表行5：病虫害严重程度 + 病虫害类型分布 -->
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>🐛 病虫害严重程度分布</h3>
+              <div id="chart-pest-severity" style="width:100%;height:280px;"></div>
+            </div>
+            <div class="panel" style="flex:1;min-width:0;">
+              <h3>🦠 病虫害类型分布</h3>
+              <div id="chart-pest-type" style="width:100%;height:280px;"></div>
             </div>
           </div>
           <div class="panel">
@@ -323,6 +335,45 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
                 </el-table>
               </el-tab-pane>
             </el-tabs>
+          </div>
+        </div>
+
+        <!-- 病虫害防治 -->
+        <div v-if="page==='病虫害防治'">
+          <div class="panel">
+            <div class="toolbar">
+              <el-button type="success" @click="openPestDlg()">+ 新增防治记录</el-button>
+              <el-select v-model="pestBatchFilter" placeholder="按批次筛选" clearable style="width:180px" @change="loadPestControls">
+                <el-option v-for="b in batches" :key="b.批次ID" :label="b.批次名称" :value="b.批次ID"></el-option>
+              </el-select>
+              <el-button @click="loadPestControls();loadBatches()">🔄 刷新</el-button>
+            </div>
+            <el-table :data="pestControls" border stripe size="small">
+              <el-table-column prop="防治ID" label="ID" width="60"></el-table-column>
+              <el-table-column prop="批次名称" label="培育批次" width="130"></el-table-column>
+              <el-table-column prop="发现日期" label="发现日期" width="110"></el-table-column>
+              <el-table-column prop="病虫害类型" label="病虫害类型" width="110">
+                <template #default="{row}"><el-tag type="danger" size="small">{{row.病虫害类型}}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="严重程度" label="严重程度" width="90">
+                <template #default="{row}">
+                  <el-tag :type="row.严重程度==='严重'?'danger':row.严重程度==='中度'?'warning':'success'" size="small">{{row.严重程度}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="防治措施" label="防治措施" min-width="200"></el-table-column>
+              <el-table-column prop="防治结果" label="防治结果" width="90">
+                <template #default="{row}">
+                  <el-tag :type="row.防治结果==='已解决'?'success':row.防治结果==='处理中'?'warning':'info'" size="small">{{row.防治结果}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="记录人姓名" label="记录人" width="90"></el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{row}">
+                  <el-button size="small" type="primary" @click="openPestDlg(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="delPestControl(row.防治ID)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
         </div>
 
@@ -719,7 +770,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
             <div class="toolbar">
               <el-select v-model="logFilter" placeholder="筛选模块" clearable style="width:140px" @change="loadLogs">
                 <el-option label="全部" value="全部"></el-option>
-                <el-option v-for="m in ['场地','作物','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
+                <el-option v-for="m in ['场地','作物','防治','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
               </el-select>
               <el-button type="success" @click="openLogDlg()">+ 新增日志</el-button>
               <el-button type="danger" @click="delLogBatch">🗑 批量清空</el-button>
@@ -935,7 +986,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     <el-form label-width="90px" size="small">
       <el-form-item label="操作模块">
         <el-select v-model="logDlg.form.模块" style="width:100%" placeholder="选择模块">
-          <el-option v-for="m in ['场地','作物','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
+          <el-option v-for="m in ['场地','作物','防治','项目','器材','考勤','用户','系统']" :key="m" :label="m" :value="m"></el-option>
         </el-select>
       </el-form-item>
       <el-form-item label="操作类型">
@@ -974,6 +1025,42 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     <template #footer>
       <el-button @click="borrowDlg.show=false">取消</el-button>
       <el-button type="success" @click="saveBorrow">提交申请</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 病虫害防治弹窗 -->
+  <el-dialog v-model="pestDlg.show" :title="pestDlg.isNew?'新增防治记录':'编辑防治记录'" width="560px">
+    <el-form label-width="90px" size="small">
+      <el-form-item label="培育批次">
+        <el-select v-model="pestDlg.form.批次ID" style="width:100%" placeholder="选择批次">
+          <el-option v-for="b in batches" :key="b.批次ID" :label="b.批次名称" :value="b.批次ID"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="发现日期">
+        <el-date-picker v-model="pestDlg.form.发现日期" type="date" style="width:100%" value-format="YYYY-MM-DD"></el-date-picker>
+      </el-form-item>
+      <el-form-item label="病虫害类型">
+        <el-select v-model="pestDlg.form.病虫害类型" style="width:100%" placeholder="选择或输入病虫害类型" allow-create filterable>
+          <el-option v-for="t in ['蚜虫','红蜘蛛','白粉病','锈病','霜霉病','根腐病','棉铃虫','菜青虫','飞虱','叶斑病']" :key="t" :label="t" :value="t"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="严重程度">
+        <el-select v-model="pestDlg.form.严重程度" style="width:100%">
+          <el-option v-for="s in ['轻度','中度','严重']" :key="s" :label="s" :value="s"></el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item label="防治措施">
+        <el-input v-model="pestDlg.form.防治措施" type="textarea" rows="3" placeholder="请描述采取的防治措施"></el-input>
+      </el-form-item>
+      <el-form-item label="防治结果">
+        <el-select v-model="pestDlg.form.防治结果" style="width:100%">
+          <el-option v-for="r in ['处理中','已解决','需持续观察']" :key="r" :label="r" :value="r"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="pestDlg.show=false">取消</el-button>
+      <el-button type="success" @click="savePestControl">保存</el-button>
     </template>
   </el-dialog>
 
@@ -1031,6 +1118,9 @@ const app = createApp({
     const dashStats = ref([]);
     const recentLogs = ref([]);
     const logSummary = ref({});
+    // 病虫害防治
+    const pestControls = ref([]); const pestBatchFilter = ref(null);
+    const pestDlg = ref({show:false, isNew:true, form:{}});
     function refreshDashboard() {
       api.get('/dashboard/stats').then(r => {
         dashStats.value = [
@@ -1042,6 +1132,7 @@ const app = createApp({
           {label:'预约数', value:r['预约数']},
           {label:'考勤场次', value:r['考勤场次'], page:'考勤管理'},
           {label:'日志数', value:r['日志数'], page:'日志管理'},
+          {label:'防治记录', value:r['防治数'], page:'病虫害防治'},
         ];
       });
       api.get('/dashboard/logs').then(r => recentLogs.value = r);
@@ -1244,6 +1335,57 @@ const app = createApp({
         chartInstances.enrollRate = c;
       }
 
+      // 9. 病虫害严重程度饼图 — 点击进入病虫害防治
+      const pestSevDom = document.getElementById('chart-pest-severity');
+      if (pestSevDom && data['防治严重程度'] && data['防治严重程度'].length > 0) {
+        const c = echarts.init(pestSevDom);
+        const sevColors = {'轻度':'#67c23a','中度':'#e6a23c','严重':'#f56c6c'};
+        c.setOption({
+          tooltip: { trigger: 'item', formatter: '{b}: {c} 次 ({d}%)' },
+          legend: { bottom: 0 },
+          series: [{
+            type: 'pie', radius: ['45%', '70%'], center: ['50%', '45%'],
+            label: { formatter: '{b}\n{d}%' },
+            data: data['防治严重程度'].map(d => ({
+              name: d.程度, value: d.次数,
+              itemStyle: { color: sevColors[d.程度] || '#909399' }
+            }))
+          }]
+        });
+        c.on('click', () => { page.value = '病虫害防治'; onMenu('病虫害防治'); });
+        chartInstances.pestSev = c;
+      } else if (pestSevDom) {
+        const c = echarts.init(pestSevDom);
+        c.setOption({
+          title: { text: '暂无病虫害记录', left: 'center', top: 'center', textStyle: { color: '#c0c4cc', fontSize: 14 } },
+        });
+        chartInstances.pestSev = c;
+      }
+
+      // 10. 病虫害类型分布柱状图
+      const pestTypeDom = document.getElementById('chart-pest-type');
+      if (pestTypeDom && data['防治类型分布'] && data['防治类型分布'].length > 0) {
+        const c = echarts.init(pestTypeDom);
+        c.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: data['防治类型分布'].map(d => d.类型), axisLabel: { rotate: 30 } },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [{
+            type: 'bar', barWidth: '50%',
+            data: data['防治类型分布'].map(d => ({ value: d.次数, itemStyle: { color: '#f56c6c' } })),
+            label: { show: true, position: 'top', fontSize: 14, fontWeight: 'bold' }
+          }]
+        });
+        c.on('click', () => { page.value = '病虫害防治'; onMenu('病虫害防治'); });
+        chartInstances.pestType = c;
+      } else if (pestTypeDom) {
+        const c = echarts.init(pestTypeDom);
+        c.setOption({
+          title: { text: '暂无病虫害记录', left: 'center', top: 'center', textStyle: { color: '#c0c4cc', fontSize: 14 } },
+        });
+        chartInstances.pestType = c;
+      }
+
       if (!window._chartResizeBound) {
         window._chartResizeBound = true;
         window.addEventListener('resize', () => {
@@ -1308,6 +1450,7 @@ const app = createApp({
       if (key === '仪表盘') refreshDashboard();
       if (key === '场地管理') { loadVenueTypes(); loadVenues(); }
       if (key === '作物管理') { cropTab.value='品种'; loadCrops(); loadVenues(); }
+      if (key === '病虫害防治') { loadPestControls(); loadBatches(); }
       if (key === '项目管理') { loadProjects(); loadVenues(); loadTeachers(); }
       if (key === '器材管理') loadEquipment();
       if (key === '器材借用') { loadEquipment(); loadMyBorrows(); }
@@ -1388,6 +1531,30 @@ const app = createApp({
       try {
         await ElMessageBox.confirm('确定删除？','警告',{type:'warning'});
         await api.delete(`/batches/${id}`); loadBatches();
+      } catch(e) {}
+    }
+
+    // ===== 病虫害防治 =====
+    function loadPestControls() {
+      api.get('/pest-controls', {params:{批次ID: pestBatchFilter.value||undefined}})
+        .then(r => pestControls.value = r.sort((a,b) => (b.防治ID||0) - (a.防治ID||0)));
+    }
+    function openPestDlg(row) {
+      pestDlg.value.isNew = !row;
+      pestDlg.value.form = row ? {...row} : {批次ID:null, 发现日期:'', 病虫害类型:'', 严重程度:'轻度', 防治措施:'', 防治结果:'处理中'};
+      pestDlg.value.show = true;
+    }
+    async function savePestControl() {
+      try {
+        if (pestDlg.value.isNew) await api.post('/pest-controls', pestDlg.value.form);
+        else await api.put(`/pest-controls/${pestDlg.value.form.防治ID}`, pestDlg.value.form);
+        pestDlg.value.show = false; loadPestControls(); refreshDashboard(); ElMessage.success('保存成功！');
+      } catch(e) {}
+    }
+    async function delPestControl(id) {
+      try {
+        await ElMessageBox.confirm('确定删除该防治记录？','警告',{type:'warning'});
+        await api.delete(`/pest-controls/${id}`); loadPestControls(); refreshDashboard(); ElMessage.success('删除成功！');
       } catch(e) {}
     }
 
@@ -1708,6 +1875,7 @@ const app = createApp({
       doLogin,doLogout,switchAccount,roleColor,onMenu,refreshDashboard,
       venues,venueFilter,venueTypes,venueDlg,openVenueDlg,saveVenue,delVenue,loadVenues,loadVenueTypes,
       crops,batches,cropTab,cropDlg,batchDlg,openCropDlg,saveCrop,delCrop,openBatchDlg,saveBatch,delBatch,loadCrops,loadBatches,
+      pestControls,pestBatchFilter,pestDlg,loadPestControls,openPestDlg,savePestControl,delPestControl,
       projects,teachers,projectDlg,openProjectDlg,saveProject,delProject,loadProjects,loadTeachers,
       equipment,equipDlg,openEquipDlg,saveEquip,delEquip,loadEquipment,loadLowStock,
       sessions,attRecords,attSessionName,pendingSessions,checkinLoading,checkinTarget,myAttendance,loadSessions,loadPendingSessions,viewAttendance,quickCheckin,loadMyAttendance,onSort,delSession,
