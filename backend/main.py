@@ -437,7 +437,7 @@ def dashboard_charts(db: Session = Depends(get_db)):
 
 # ==================== 用户管理 ====================
 @app.get("/api/users", tags=["用户管理"])
-def list_users(all: bool = False, db: Session = Depends(get_db)):
+def list_users(all: bool = False, user=Depends(auth_required), db: Session = Depends(get_db)):
     q = db.query(用户表)
     if not all:
         q = q.filter(用户表.是否启用 == 1)
@@ -584,6 +584,8 @@ def list_venue_types(db: Session = Depends(get_db)):
 
 @app.post("/api/venues", tags=["场地管理"])
 def create_venue(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权管理场地")
     v = 实训场地表(
         场地编号=data.get("场地编号", ""), 场地名称=data["场地名称"],
         类型ID=data.get("类型ID"), 面积平米=data.get("面积平米"),
@@ -597,6 +599,8 @@ def create_venue(data: dict = Body(...), user=Depends(auth_required), db: Sessio
 
 @app.put("/api/venues/{vid}", tags=["场地管理"])
 def update_venue(vid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改场地")
     v = db.query(实训场地表).filter(实训场地表.场地ID == vid).first()
     if not v: raise HTTPException(404, "场地不存在")
     旧值 = {k: getattr(v, k) for k in ["场地编号", "场地名称", "类型ID", "面积平米", "主要用途", "使用状态", "责任人", "备注"]}
@@ -625,6 +629,10 @@ def delete_venue(vid: int, user=Depends(auth_required), db: Session = Depends(ge
     if user.角色ID != 1:
         raise HTTPException(403, "只有管理员可以删除场地")
     # 级联清除
+    pest_del = 0
+    venue_batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID == vid).all()
+    for (bid,) in venue_batches:
+        pest_del += db.query(病虫害防治表).filter(病虫害防治表.批次ID == bid).delete()
     batch_del = db.query(培育批次表).filter(培育批次表.场地ID == vid).delete()
     book_del = db.query(场地预约表).filter(场地预约表.场地ID == vid).delete()
     maint_del = db.query(场地维护表).filter(场地维护表.场地ID == vid).delete()
@@ -632,7 +640,7 @@ def delete_venue(vid: int, user=Depends(auth_required), db: Session = Depends(ge
     if v:
         name = v.场地名称
         db.delete(v)
-        log = 操作日志表(用户ID=user.用户ID, 模块="场地", 操作类型="删除", 目标类型="实训场地表", 目标ID=vid, 描述=f"{user.真实姓名} 删除了场地「{name}」（含关联批次/预约/维护记录）", 操作时间=datetime.now())
+        log = 操作日志表(用户ID=user.用户ID, 模块="场地", 操作类型="删除", 目标类型="实训场地表", 目标ID=vid, 描述=f"{user.真实姓名} 删除了场地「{name}」（含关联{pest_del}条防治+{batch_del}批次+{book_del}预约+{maint_del}维护记录）", 操作时间=datetime.now())
         db.add(log); db.commit()
     return {"ok": True}
 
@@ -647,6 +655,8 @@ def list_crops(db: Session = Depends(get_db)):
 
 @app.post("/api/crops", tags=["作物管理"])
 def create_crop(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权管理作物品种")
     c = 作物品种表(
         品种名称=data["品种名称"], 科属=data.get("科属", ""),
         培育周期=data.get("培育周期"), 温湿范围=data.get("温湿范围", ""),
@@ -659,6 +669,8 @@ def create_crop(data: dict = Body(...), user=Depends(auth_required), db: Session
 
 @app.put("/api/crops/{cid}", tags=["作物管理"])
 def update_crop(cid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改作物")
     c = db.query(作物品种表).filter(作物品种表.品种ID == cid).first()
     if not c: raise HTTPException(404, "作物不存在")
     旧值 = {k: getattr(c, k) for k in ["品种名称", "科属", "培育周期", "温湿范围", "描述"]}
@@ -684,6 +696,8 @@ def update_crop(cid: int, data: dict = Body(...), user=Depends(auth_required), d
 
 @app.delete("/api/crops/{cid}", tags=["作物管理"])
 def delete_crop(cid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权删除作物")
     c = db.query(作物品种表).filter(作物品种表.品种ID == cid).first()
     if not c: raise HTTPException(404, "作物不存在")
     name = c.品种名称
@@ -708,6 +722,8 @@ def list_batches(场地ID: int = None, db: Session = Depends(get_db)):
 
 @app.post("/api/batches", tags=["作物管理"])
 def create_batch(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权创建培育批次")
     b = 培育批次表(
         批次名称=data.get("批次名称", ""), 品种ID=data.get("品种ID"),
         场地ID=data.get("场地ID"), 种植日期=data.get("种植日期"),
@@ -721,6 +737,8 @@ def create_batch(data: dict = Body(...), user=Depends(auth_required), db: Sessio
 
 @app.put("/api/batches/{bid}", tags=["作物管理"])
 def update_batch(bid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改批次")
     b = db.query(培育批次表).filter(培育批次表.批次ID == bid).first()
     if not b: raise HTTPException(404, "批次不存在")
     旧值 = {k: getattr(b, k) for k in ["批次名称", "品种ID", "场地ID", "种植日期", "数量", "生长状态", "存活率"]}
@@ -761,11 +779,14 @@ def update_batch(bid: int, data: dict = Body(...), user=Depends(auth_required), 
 
 @app.delete("/api/batches/{bid}", tags=["作物管理"])
 def delete_batch(bid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权删除批次")
     b = db.query(培育批次表).filter(培育批次表.批次ID == bid).first()
     if not b: raise HTTPException(404, "批次不存在")
     name, qty = b.批次名称, b.数量
+    pest_count = db.query(病虫害防治表).filter(病虫害防治表.批次ID == bid).delete()
     db.delete(b); db.commit()
-    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="删除", 目标类型="培育批次表", 目标ID=bid, 描述=f"{user.真实姓名} 删除了培育批次「{name}」（{qty}株）", 操作时间=datetime.now())
+    log = 操作日志表(用户ID=user.用户ID, 模块="作物", 操作类型="删除", 目标类型="培育批次表", 目标ID=bid, 描述=f"{user.真实姓名} 删除了培育批次「{name}」（{qty}株）及{pest_count}条防治记录", 操作时间=datetime.now())
     db.add(log); db.commit()
     return {"ok": True}
 
@@ -790,6 +811,8 @@ def list_projects(user=Depends(auth_required), db: Session = Depends(get_db)):
 
 @app.post("/api/projects", tags=["项目管理"])
 def create_project(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权创建项目")
     p = 实训项目表(
         项目名称=data["项目名称"], 项目描述=data.get("项目描述", ""),
         场地ID=data.get("场地ID"), 学期ID=data.get("学期ID"),
@@ -804,6 +827,8 @@ def create_project(data: dict = Body(...), user=Depends(auth_required), db: Sess
 
 @app.put("/api/projects/{pid}", tags=["项目管理"])
 def update_project(pid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改项目")
     p = db.query(实训项目表).filter(实训项目表.项目ID == pid).first()
     if not p: raise HTTPException(404, "项目不存在")
     旧值 = {k: getattr(p, k) for k in ["项目名称", "项目描述", "场地ID", "学期ID", "负责教师ID", "开始日期", "结束日期", "人数上限", "项目状态"]}
@@ -859,8 +884,11 @@ def delete_project(pid: int, user=Depends(auth_required), db: Session = Depends(
     return {"ok": True}
 
 @app.get("/api/enrollments", tags=["项目管理"])
-def list_enrollments(项目ID: int = None, db: Session = Depends(get_db)):
+def list_enrollments(项目ID: int = None, user=Depends(auth_required), db: Session = Depends(get_db)):
     q = db.query(学生报名表)
+    # 学生只能看自己的报名
+    if user.角色ID == 3:
+        q = q.filter(学生报名表.学生ID == user.用户ID)
     if 项目ID: q = q.filter(学生报名表.项目ID == 项目ID)
     return [{
         "报名ID": e.报名ID, "项目ID": e.项目ID, "学生ID": e.学生ID,
@@ -874,6 +902,13 @@ def list_enrollments(项目ID: int = None, db: Session = Depends(get_db)):
 def update_enrollment(eid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
     e = db.query(学生报名表).filter(学生报名表.报名ID == eid).first()
     if not e: raise HTTPException(404, "报名记录不存在")
+    # 权限：管理员全部可改，教师只能改自己负责项目的报名
+    if user.角色ID == 2:
+        proj = db.query(实训项目表).filter(实训项目表.项目ID == e.项目ID).first()
+        if not proj or proj.负责教师ID != user.用户ID:
+            raise HTTPException(403, "只能修改自己负责项目的报名记录")
+    elif user.角色ID not in (1, 2):
+        raise HTTPException(403, "无权限")
     变更列表 = []
     if "报名状态" in data and data["报名状态"] != e.报名状态:
         旧状态 = e.报名状态
@@ -1074,6 +1109,8 @@ def list_equipment(db: Session = Depends(get_db)):
 
 @app.post("/api/equipment", tags=["器材管理"])
 def create_equipment(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权管理器材")
     if db.query(器材档案表).filter(器材档案表.器材编号 == data.get("器材编号", "")).first():
         raise HTTPException(400, "器材编号已存在")
     e = 器材档案表(
@@ -1090,6 +1127,8 @@ def create_equipment(data: dict = Body(...), user=Depends(auth_required), db: Se
 
 @app.put("/api/equipment/{eid}", tags=["器材管理"])
 def update_equipment(eid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改器材")
     e = db.query(器材档案表).filter(器材档案表.器材ID == eid).first()
     if not e: raise HTTPException(404, "器材不存在")
     旧值 = {k: getattr(e, k) for k in ["器材编号", "器材名称", "分类ID", "规格型号", "单位", "当前库存", "最低库存", "单价", "存放位置"]}
@@ -1122,6 +1161,8 @@ def update_equipment(eid: int, data: dict = Body(...), user=Depends(auth_require
 
 @app.delete("/api/equipment/{eid}", tags=["器材管理"])
 def delete_equipment(eid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权删除器材")
     db.query(借用记录表).filter(借用记录表.器材ID == eid).delete()
     db.query(消耗记录表).filter(消耗记录表.器材ID == eid).delete()
     e = db.query(器材档案表).filter(器材档案表.器材ID == eid).first()
@@ -1138,8 +1179,11 @@ def list_equip_cats(db: Session = Depends(get_db)):
     return [{"分类ID": c.分类ID, "分类名称": c.分类名称} for c in db.query(器材分类表).order_by(器材分类表.分类ID).all()]
 
 @app.get("/api/borrows", tags=["器材管理"])
-def list_borrows(db: Session = Depends(get_db)):
+def list_borrows(user=Depends(auth_required), db: Session = Depends(get_db)):
     borrows = db.query(借用记录表).order_by(desc(借用记录表.借用日期)).all()
+    # 学生只能看到自己的借用记录
+    if user.角色ID == 3:
+        borrows = [b for b in borrows if b.用户ID == user.用户ID]
     return [{
         "借用ID": b.借用ID, "器材ID": b.器材ID, "用户ID": b.用户ID,
         "借用数量": b.借用数量, "借用日期": str(b.借用日期)[:16] if b.借用日期 else "",
@@ -1214,7 +1258,7 @@ def return_borrow(bid: int, user=Depends(auth_required), db: Session = Depends(g
 # ==================== 考勤管理 ====================
 @app.get("/api/sessions", tags=["考勤管理"])
 def list_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
-    # 管理员看全部，教师只看自己负责项目的考勤场次
+    # 管理员看全部，教师只看自己负责项目的考勤场次，学生只看已报名项目的
     q = db.query(考勤场次表)
     if user.角色ID == 2:  # 教师
         my_project_ids = db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()
@@ -1222,6 +1266,12 @@ def list_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
         if not my_pids:
             return []
         q = q.filter(考勤场次表.项目ID.in_(my_pids))
+    elif user.角色ID == 3:  # 学生
+        enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
+        project_ids = [e.项目ID for e in enrolls]
+        if not project_ids:
+            return []
+        q = q.filter(考勤场次表.项目ID.in_(project_ids))
     sessions = q.order_by(desc(考勤场次表.场次日期)).all()
     return [{
         "场次ID": s.场次ID, "项目ID": s.项目ID, "场次日期": str(s.场次日期) if s.场次日期 else "",
@@ -1233,6 +1283,8 @@ def list_sessions(user=Depends(auth_required), db: Session = Depends(get_db)):
 
 @app.post("/api/sessions", tags=["考勤管理"])
 def create_session(data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权发布考勤")
     s = 考勤场次表(
         项目ID=data["项目ID"], 场次日期=data["场次日期"],
         开始时间=data["开始时间"], 结束时间=data.get("结束时间"),
@@ -1247,6 +1299,8 @@ def create_session(data: dict = Body(...), user=Depends(auth_required), db: Sess
 
 @app.put("/api/sessions/{sid}", tags=["考勤管理"])
 def update_session(sid: int, data: dict = Body(...), user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权修改考勤场次")
     s = db.query(考勤场次表).filter(考勤场次表.场次ID == sid).first()
     if not s: raise HTTPException(404, "场次不存在")
     旧值 = {k: getattr(s, k) for k in ["场次日期", "开始时间", "结束时间", "地点", "带队教师ID"]}
@@ -1279,6 +1333,8 @@ def update_session(sid: int, data: dict = Body(...), user=Depends(auth_required)
 
 @app.delete("/api/sessions/{sid}", tags=["考勤管理"])
 def delete_session(sid: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    if user.角色ID == 3:
+        raise HTTPException(403, "学生无权删除考勤场次")
     del_count = db.query(签到记录表).filter(签到记录表.场次ID == sid).delete()
     s = db.query(考勤场次表).filter(考勤场次表.场次ID == sid).first()
     sname = s.场次日期 if s else "未知"
@@ -1289,8 +1345,11 @@ def delete_session(sid: int, user=Depends(auth_required), db: Session = Depends(
     return {"ok": True}
 
 @app.get("/api/attendance", tags=["考勤管理"])
-def list_attendance(session_id: int = None, db: Session = Depends(get_db)):
+def list_attendance(session_id: int = None, user=Depends(auth_required), db: Session = Depends(get_db)):
     q = db.query(签到记录表)
+    # 学生只能看自己的签到记录
+    if user.角色ID == 3:
+        q = q.filter(签到记录表.学生ID == user.用户ID)
     if session_id: q = q.filter(签到记录表.场次ID == session_id)
     records = q.order_by(签到记录表.签到ID).all()
     return [{
@@ -1382,8 +1441,11 @@ def checkin(data: dict = Body(...), user=Depends(auth_required), db: Session = D
 
 # ==================== 日志管理 ====================
 @app.get("/api/logs", tags=["日志管理"])
-def list_logs(模块: str = None, db: Session = Depends(get_db)):
+def list_logs(模块: str = None, user=Depends(auth_required), db: Session = Depends(get_db)):
     q = db.query(操作日志表)
+    # 非管理员只能看到自己的操作日志
+    if user.角色ID != 1:
+        q = q.filter(操作日志表.用户ID == user.用户ID)
     if 模块 and 模块 != "全部": q = q.filter(操作日志表.模块 == 模块)
     logs = q.order_by(desc(操作日志表.操作时间)).limit(200).all()
     return [{
@@ -1473,7 +1535,7 @@ def logs_summary(db: Session = Depends(get_db)):
 
 # ==================== 视图接口 ====================
 @app.get("/api/views/low_stock", tags=["视图"])
-def view_low_stock(db: Session = Depends(get_db)):
+def view_low_stock(user=Depends(auth_required), db: Session = Depends(get_db)):
     items = db.query(器材档案表).filter(器材档案表.当前库存 <= 器材档案表.最低库存).order_by(器材档案表.当前库存).all()
     return [{
         "器材ID": e.器材ID, "器材编号": e.器材编号, "器材名称": e.器材名称,
@@ -1482,7 +1544,7 @@ def view_low_stock(db: Session = Depends(get_db)):
     } for e in items]
 
 @app.get("/api/views/attendance_stats", tags=["视图"])
-def view_attendance_stats(db: Session = Depends(get_db)):
+def view_attendance_stats(user=Depends(auth_required), db: Session = Depends(get_db)):
     projects = db.query(实训项目表).all()
     result = []
     for p in projects:
@@ -1503,33 +1565,39 @@ def view_attendance_stats(db: Session = Depends(get_db)):
 def list_pest_controls(批次ID: int = None, user=Depends(auth_required), db: Session = Depends(get_db)):
     """列出病虫害防治记录。所有人可见——按教师负责的场地项目和学生的报名项目来分"""
     q = db.query(病虫害防治表)
-    # 学生只看自己报名项目的批次病虫害
+    # 学生看自己报名项目的批次病虫害，也看自己创建的防治记录
     if user.角色ID == 3:
         # 学生报名通过的项目
         enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
         project_ids = [e.项目ID for e in enrolls]
-        if not project_ids:
-            return []
-        # 这些项目的批次ID
-        batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(
-            db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(project_ids))
-        )).all()
-        batch_ids = [b[0] for b in batches]
+        batch_ids = []
+        if project_ids:
+            batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(
+                db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(project_ids))
+            )).all()
+            batch_ids.extend([b[0] for b in batches])
+        # 学生自己创建的防治记录也加入
+        own_batch_ids = [b[0] for b in db.query(病虫害防治表.批次ID).filter(病虫害防治表.记录人ID == user.用户ID).distinct().all()]
+        batch_ids = list(set(batch_ids + own_batch_ids))
         if not batch_ids:
             return []
         q = q.filter(病虫害防治表.批次ID.in_(batch_ids))
-    # 教师只看自己负责项目中涉及批次的病虫害
+    # 教师看自己负责项目中涉及批次的病虫害，也看自己创建的防治记录
     elif user.角色ID == 2:
         my_project_ids = [p[0] for p in db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()]
-        if not my_project_ids:
-            return []
-        batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(
-            db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(my_project_ids))
-        )).all()
-        batch_ids = [b[0] for b in batches]
+        venue_ids = []
+        batch_ids = []
+        if my_project_ids:
+            venue_ids = [v[0] for v in db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(my_project_ids)).distinct().all()]
+        if venue_ids:
+            batches = db.query(培育批次表.批次ID).filter(培育批次表.场地ID.in_(venue_ids)).all()
+            batch_ids.extend([b[0] for b in batches])
+        # 教师自己直接记录的防治也加入
+        own_batch_ids = [b[0] for b in db.query(病虫害防治表.批次ID).filter(病虫害防治表.记录人ID == user.用户ID).distinct().all()]
+        batch_ids = list(set(batch_ids + own_batch_ids))
         if not batch_ids:
             return []
-        q = q.filter(病虫害防治表.批次ID.in_(batch_ids))
+        q = db.query(病虫害防治表).filter(病虫害防治表.批次ID.in_(batch_ids))
     # 管理员看全部
     if 批次ID:
         q = q.filter(病虫害防治表.批次ID == 批次ID)
@@ -1579,8 +1647,8 @@ def update_pest_control(pid: int, data: dict = Body(...), user=Depends(auth_requ
                 try:
                     旧批 = db.query(培育批次表).filter(培育批次表.批次ID == int(旧)).first()
                     新批 = db.query(培育批次表).filter(培育批次表.批次ID == int(新)).first()
-                    旧 = 旧批.批次名称 if 旧批 else old_val
-                    新 = 新批.批次名称 if 新批 else new_val
+                    旧 = 旧批.批次名称 if 旧批 else 旧
+                    新 = 新批.批次名称 if 新批 else 新
                 except: pass
             变更列表.append(f"{字段显示名.get(k, k)}: {旧} → {新}")
             setattr(p, k, data[k])
@@ -1606,6 +1674,58 @@ def delete_pest_control(pid: int, user=Depends(auth_required), db: Session = Dep
     log = 操作日志表(用户ID=user.用户ID, 模块="防治", 操作类型="删除", 目标类型="病虫害防治表", 目标ID=pid, 描述=f"{user.真实姓名} 删除了一条病虫害防治记录（ID={pid}）", 操作时间=datetime.now())
     db.add(log); db.commit()
     return {"ok": True}
+
+# 按场地ID获取病虫害记录
+@app.get("/api/venues/{venue_id}/pest-controls", tags=["病虫害防治"])
+def get_venue_pest_controls(venue_id: int, user=Depends(auth_required), db: Session = Depends(get_db)):
+    """获取某个场地所有批次的病虫害防治记录——按权限过滤"""
+    # 找到该场地所有批次
+    batch_ids = [b[0] for b in db.query(培育批次表.批次ID).filter(培育批次表.场地ID == venue_id).all()]
+    if not batch_ids:
+        return []
+    
+    q = db.query(病虫害防治表).filter(病虫害防治表.批次ID.in_(batch_ids))
+    
+    # 学生：看已报名项目场地或自己创建的
+    if user.角色ID == 3:
+        enrolls = db.query(学生报名表).filter(学生报名表.学生ID == user.用户ID, 学生报名表.报名状态 == "已通过").all()
+        project_ids = [e.项目ID for e in enrolls]
+        allowed = True
+        if project_ids:
+            allowed_venue_ids = [v[0] for v in db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(project_ids)).distinct().all()]
+            if venue_id not in allowed_venue_ids:
+                allowed = False
+        else:
+            allowed = False
+        # 如果学生创建了该场地下某些批次的防治记录，也允许看
+        if not allowed:
+            own = db.query(病虫害防治表).filter(病虫害防治表.批次ID.in_(batch_ids), 病虫害防治表.记录人ID == user.用户ID).first()
+            if not own:
+                return []
+    # 教师：只看到自己负责项目中该场地的批次或自己记录的
+    elif user.角色ID == 2:
+        my_project_ids = [p[0] for p in db.query(实训项目表.项目ID).filter(实训项目表.负责教师ID == user.用户ID).all()]
+        if my_project_ids:
+            my_venue_ids = [v[0] for v in db.query(实训项目表.场地ID).filter(实训项目表.项目ID.in_(my_project_ids)).distinct().all()]
+        else:
+            my_venue_ids = []
+        # 该场地是教师负责的 → 显示全部；教师自己记录的 → 显示
+        if venue_id not in my_venue_ids:
+            # 检查是否有自己记录的
+            own = db.query(病虫害防治表).filter(病虫害防治表.批次ID.in_(batch_ids), 病虫害防治表.记录人ID == user.用户ID).first()
+            if not own:
+                return []
+    
+    records = q.order_by(desc(病虫害防治表.防治ID)).all()
+    return [{
+        "防治ID": r.防治ID, "批次ID": r.批次ID,
+        "发现日期": str(r.发现日期) if r.发现日期 else "",
+        "病虫害类型": r.病虫害类型, "严重程度": r.严重程度,
+        "防治措施": r.防治措施, "防治结果": r.防治结果,
+        "记录人ID": r.记录人ID,
+        "批次名称": db.query(培育批次表).filter(培育批次表.批次ID == r.批次ID).first().批次名称 if r.批次ID else "",
+        "记录人姓名": db.query(用户表).filter(用户表.用户ID == r.记录人ID).first().真实姓名 if r.记录人ID else ""
+    } for r in records]
 
 # ==================== 前端静态文件 ====================
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")

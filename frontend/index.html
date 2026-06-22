@@ -239,12 +239,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-table-column prop="用户姓名" label="操作人" width="90"></el-table-column>
               <el-table-column prop="模块" label="模块" width="70">
                 <template #default="{row}">
-                  <el-tag size="small" :type="row.模块==='用户'?'danger':'success'">{{row.模块}}</el-tag>
+                  <el-tag size="small" :type="row.模块==='用户'?'danger':row.模块==='器材'?'warning':row.模块==='防治'?'danger':row.模块==='考勤'?'success':row.模块==='系统'?'info':'success'">{{row.模块}}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="操作类型" label="操作" width="70">
                 <template #default="{row}">
-                  <el-tag size="small" :type="row.操作类型==='新增'?'success':row.操作类型==='删除'?'danger':'warning'">{{row.操作类型}}</el-tag>
+                  <el-tag size="small" :type="row.操作类型==='新增'||row.操作类型==='报名'?'success':row.操作类型==='删除'?'danger':'warning'">{{row.操作类型}}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="描述" label="操作内容"></el-table-column>
@@ -278,13 +278,44 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               </el-table-column>
               <el-table-column prop="责任人" label="责任人" width="90"></el-table-column>
               <el-table-column prop="备注" label="备注"></el-table-column>
-              <el-table-column label="操作" width="160" fixed="right">
+              <el-table-column label="操作" width="240" fixed="right">
                 <template #default="{row}">
                   <el-button size="small" type="primary" @click="openVenueDlg(row)">编辑</el-button>
                   <el-button size="small" type="danger" @click="delVenue(row.场地ID)">删除</el-button>
+                  <el-button size="small" type="warning" @click="toggleVenuePest(row)" :disabled="!row.场地ID">{{ selectedVenue && selectedVenue.场地ID===row.场地ID ? '收起防治' : '病虫害' }}</el-button>
                 </template>
               </el-table-column>
             </el-table>
+            <!-- 场地下病虫害防治记录 -->
+            <div v-if="venuePestVisible && selectedVenue" style="margin-top:16px;background:#fff5f5;border-radius:8px;padding:16px;border:1px solid #fde2e2;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <h3 style="margin:0;color:#f56c6c;">🐛 {{ selectedVenue.场地名称 }} — 病虫害防治记录</h3>
+                <el-button size="small" type="text" @click="venuePestVisible=false;selectedVenue=null">✕ 收起</el-button>
+              </div>
+              <div v-if="venuePestControls.length===0" style="text-align:center;padding:20px;color:#909399;">
+                🍃 该场地暂无病虫害记录
+              </div>
+              <el-table v-else :data="venuePestControls" border stripe size="small">
+                <el-table-column prop="防治ID" label="ID" width="60"></el-table-column>
+                <el-table-column prop="批次名称" label="培育批次" width="120"></el-table-column>
+                <el-table-column prop="发现日期" label="发现日期" width="110"></el-table-column>
+                <el-table-column prop="病虫害类型" label="病虫害类型" width="110">
+                  <template #default="{row}"><el-tag type="danger" size="small">{{row.病虫害类型}}</el-tag></template>
+                </el-table-column>
+                <el-table-column prop="严重程度" label="严重程度" width="90">
+                  <template #default="{row}">
+                    <el-tag :type="row.严重程度==='严重'?'danger':row.严重程度==='中度'?'warning':'success'" size="small">{{row.严重程度}}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="防治措施" label="防治措施" min-width="180"></el-table-column>
+                <el-table-column prop="防治结果" label="防治结果" width="90">
+                  <template #default="{row}">
+                    <el-tag :type="row.防治结果==='已解决'?'success':row.防治结果==='处理中'?'warning':'info'" size="small">{{row.防治结果}}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="记录人姓名" label="记录人" width="90"></el-table-column>
+              </el-table>
+            </div>
           </div>
         </div>
 
@@ -781,12 +812,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
               <el-table-column prop="用户姓名" label="操作人" width="90" fixed="left"></el-table-column>
               <el-table-column prop="模块" label="模块" width="80">
                 <template #default="{row}">
-                  <el-tag size="small" :type="row.模块==='用户'?'danger':row.模块==='系统'?'info':'success'">{{row.模块}}</el-tag>
+                  <el-tag size="small" :type="row.模块==='用户'?'danger':row.模块==='防治'?'danger':row.模块==='器材'?'warning':row.模块==='考勤'?'success':row.模块==='系统'?'info':'success'">{{row.模块}}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="操作类型" label="操作" width="80">
                 <template #default="{row}">
-                  <el-tag size="small" :type="row.操作类型==='新增'?'success':row.操作类型==='删除'?'danger':row.操作类型==='修改'?'warning':'info'">{{row.操作类型}}</el-tag>
+                  <el-tag size="small" :type="row.操作类型==='新增'||row.操作类型==='审核通过'||row.操作类型==='报名'?'success':row.操作类型==='删除'||row.操作类型==='拒绝'?'danger':row.操作类型==='修改'?'warning':'info'">{{row.操作类型}}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="描述" label="操作详情" min-width="300"></el-table-column>
@@ -1468,8 +1499,18 @@ const app = createApp({
     const venueFilter = ref('');
     const venueTypes = ref([]);
     const venueDlg = ref({show:false, isNew:true, form:{}});
+    const venuePestControls = ref([]);
+    const venuePestVisible = ref(false);
+    const selectedVenue = ref(null);
     function loadVenues() { api.get('/venues', {params:{status:venueFilter.value||undefined}}).then(r => venues.value = r.sort((a,b) => (b.面积平米||0) - (a.面积平米||0))); }
     function loadVenueTypes() { api.get('/venue_types').then(r => venueTypes.value = r); }
+    function toggleVenuePest(row) {
+      if (selectedVenue.value && selectedVenue.value.场地ID === row.场地ID && venuePestVisible.value) {
+        venuePestVisible.value = false; selectedVenue.value = null; return;
+      }
+      selectedVenue.value = row; venuePestVisible.value = true;
+      api.get(`/venues/${row.场地ID}/pest-controls`).then(r => venuePestControls.value = r || []);
+    }
     function openVenueDlg(row) {
       venueDlg.value.isNew = !row;
       venueDlg.value.form = row ? {...row} : {场地编号:'', 场地名称:'', 类型ID:null, 面积平米:'', 主要用途:'', 使用状态:'空闲', 责任人:'', 备注:''};
@@ -1873,7 +1914,7 @@ const app = createApp({
     return {
       token,me,loading,loginForm,page,dashStats,recentLogs,logSummary,
       doLogin,doLogout,switchAccount,roleColor,onMenu,refreshDashboard,
-      venues,venueFilter,venueTypes,venueDlg,openVenueDlg,saveVenue,delVenue,loadVenues,loadVenueTypes,
+      venues,venueFilter,venueTypes,venueDlg,venuePestControls,venuePestVisible,selectedVenue,toggleVenuePest,openVenueDlg,saveVenue,delVenue,loadVenues,loadVenueTypes,
       crops,batches,cropTab,cropDlg,batchDlg,openCropDlg,saveCrop,delCrop,openBatchDlg,saveBatch,delBatch,loadCrops,loadBatches,
       pestControls,pestBatchFilter,pestDlg,loadPestControls,openPestDlg,savePestControl,delPestControl,
       projects,teachers,projectDlg,openProjectDlg,saveProject,delProject,loadProjects,loadTeachers,
